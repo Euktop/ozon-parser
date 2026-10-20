@@ -1,6 +1,6 @@
 # Ozon Parser
 
-[![CI](https://github.com/YOUR-USERNAME/ozon_parser/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR-USERNAME/ozon_parser/actions/workflows/ci.yml)
+[![CI](https://github.com/Euktop/ozon_parser/actions/workflows/ci.yml/badge.svg)](https://github.com/Euktop/ozon_parser/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 

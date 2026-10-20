@@ -11,9 +11,8 @@
 
 **Не открывайте публичный issue** для проблем безопасности. Используйте:
 
-- **GitHub Security Advisory** — вкладка **Security** → **Report a vulnerability**
-  (приватно, видно только мейнтейнеру).
-- **Email** — `<укажите контактный email>` (замените placeholder перед публикацией).
+- **GitHub Security Advisory** — вкладка **Security** → **Report a vulnerability**.
+- **Email** — `eugenij.trun@yandex.ru`.
 
 Опишите шаги воспроизведения, версию и потенциальный impact. Ответ — в
 течение 7 дней.
