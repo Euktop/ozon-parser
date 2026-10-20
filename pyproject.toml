@@ -1,0 +1,44 @@
+[build-system]
+requires = ['setuptools>=68', 'wheel']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'ozon-parser'
+version = '0.4.0'
+description = 'Кроссплатформенный парсер Ozon PDP → Markdown-коллекция'
+readme = 'README.md'
+requires-python = '>=3.10'
+license = { text = 'MIT' }
+authors = [{ name = 'Ozon Parser' }]
+
+dependencies = [
+    'beautifulsoup4>=4.12',
+    'pyperclip>=1.8',
+    "tomli>=2.0; python_version < '3.11'",
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    'pytest>=8',
+    'pytest-cov>=5',
+    'ruff>=0.6',
+    'mypy>=1.11',
+    'cryptography>=42',  # build/gen_extension_key.py
+]
+
+[project.scripts]
+ozon-parser = 'ozon_parser.cli:main'
+ozon-parser-native = 'ozon_parser.presentation.native_host:main'
+
+[tool.setuptools.packages.find]
+include = ['ozon_parser*']
+
+[tool.ruff]
+line-length = 100
+target-version = 'py310'
+
+[tool.pytest.ini_options]
+testpaths = ['tests']
+pythonpath = ['.']
+addopts = '-ra -q'

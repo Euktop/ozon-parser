@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Ozon Parser",
+  "version": "0.4.0",
+  "description": "Отправляет текущую Ozon PDP в локальный ozon-parser (SQLite + Markdown).",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "downloads",
+    "nativeMessaging",
+    "storage",
+    "notifications",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://www.ozon.ru/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Ozon Parser",
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "ingest-active": {
+      "suggested_key": {
+        "default": "Alt+Shift+O"
+      },
+      "description": "Ingest current Ozon PDP into local collection"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtr66xz909ywffbOMkG++PkyOQsjhNtVQPex1e483fLf5x7kl+ST7QEf0TgB1SUwfM2lrrC0u617vRHEKluaobOeQwWA9/h0dyZ56CASpBKy5NoyeK52cdxIG/B2zdAsuYpykLfoJ0g8eZEPhi+YAMI5ejQGWzf3RVPocGCfm6Sq0m2Qrago+EzvCya2yFVVSzMP6ur52ogEcgSb8bmyZAoJTAgPMULyQTVOSmC49gnxM5DbqfBCunJAwaTQ+ACxJaFu7lprlAx7GWqajGdxx6QIWtxmxI28jitZdgTZiwvwEsNWhI6Czxp/tAe40XFA62F9BoChQHWR3SLyFUO38gwIDAQAB"
+}

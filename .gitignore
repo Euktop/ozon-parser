@@ -1,0 +1,46 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.venv/
+venv/
+.env
+.env.*
+.idea/
+.vscode/
+*.db
+*.db-journal
+*.db-wal
+*.log
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Fixtures — содержат большие куски Ozon HTML, не коммитим
+tests/fixtures/*.html
+tests/fixtures/*.htm
+
+# Extension private key (RSA-2048). Нужен только для Chrome Web Store
+# upload; в git не кладём — при утере ID будет другим (не восстановить).
+build/ozon-parser-extension.pem
+
+# Старый pem в корне (был до build/gen_extension_key.py) — тоже приватный
+extension.pem
+
+# Extension package (build artifact, собирается через chrome://extensions → Pack)
+extension.crx
+
+# Installer output (build artifact, собирается iscc)
+installer/Output/
+
+# Локальные артефакты
+out/
+out2/
+x.md
+test.db
+test.db-*
+
