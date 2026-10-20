@@ -1,6 +1,6 @@
 # Ozon Parser
 
-[![CI](https://github.com/Euktop/ozon_parser/actions/workflows/ci.yml/badge.svg)](https://github.com/Euktop/ozon_parser/actions/workflows/ci.yml)
+[![CI](https://github.com/Euktop/ozon-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/Euktop/ozon-parser/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -29,8 +29,10 @@
 - **Native Messaging** — расширение запускает Python-ядро через stdio
   (Chrome сам поднимает host-процесс), без фонового `serve` и без порта
   в `netstat`. Fallback на HTTP — если host не зарегистрирован.
-- **Installer** — `ozon-parser-setup.exe` (Inno Setup) с мастером
-  Extension ID; `ozon-parser native register` для dev.
+- **Installer** — `ozon-parser-setup.exe` (Inno Setup), one-click
+  без wizard'а. Extension ID стабилен (`bmdjfjhckhfifhdnohiojamggfnlbcgf`):
+  зафиксирован через `key` в `manifest.json`, генерируется
+  `build/gen_extension_key.py`.
 - **IngestHtmlUseCase** / **ReparseUseCase** — единая точка ingest,
   без тройного дублирования parse+quality+upsert.
 - **Extension: popup** — список товаров, удаление, выгрузка (MD/JSONL/CSV),
@@ -49,10 +51,10 @@
 ### Windows: двойной клик
 
 1. Скачай `ozon-parser-setup.exe` (или собери: `build\build.bat` + `iscc installer\install.iss`)
-2. Двойной клик → «Установить»
-3. В мастере вставь **Extension ID** из `chrome://extensions`
-4. `chrome://extensions` → Load unpacked → папка `extension/`
-5. Открой Ozon PDP → товар в popup
+2. Двойной клик → «Установить» (wizard без шага Extension ID — ID
+   захардкожен в `_extension_id.py`)
+3. `chrome://extensions` → Load unpacked → папка `extension/`
+4. Открой Ozon PDP → товар в popup
 
 **Никакого cmd.** Расширение запускает Python-ядро само через Native Messaging, без фонового `serve`.
 
@@ -61,7 +63,8 @@
     python -m venv .venv
     .venv\Scripts\activate          # Windows
     pip install -e .[dev]
-    ozon-parser native register --extension-id <ID>   # для extension
+    python build/gen_extension_key.py   # один раз — генерирует RSA key + ID
+    ozon-parser native register          # ID берётся из _extension_id.py
 
 ## Запуск
 
@@ -164,8 +167,9 @@
 
 Если bookmarklet кажется ручным — есть браузерное расширение:
 
-    ozon-parser serve            REM запустить сервер
     REM chrome://extensions → Developer mode → Load unpacked → extension/
+    REM HTTP-сервер не нужен: расширение работает через Native Messaging.
+    REM `ozon-parser serve` — только для bookmarklet / Web UI.
 
 **Клик по иконке** открывает popup:
 
