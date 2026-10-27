@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Ozon Parser",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Отправляет текущую Ozon PDP в локальный ozon-parser (SQLite + Markdown).",
   "permissions": [
     "activeTab",
+    "clipboardWrite",
     "contextMenus",
     "downloads",
     "nativeMessaging",

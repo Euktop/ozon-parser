@@ -18,16 +18,20 @@
 // ingest. Тихо: только badge, если пользователь не на активной вкладке.
 
 const DEFAULT_PORT = 8765;
-const AUTO_DEBOUNCE_MS = 3000;
-const AUTO_DEDUP_MS = 60 * 1000;
+// Dedup окно: 5с хватает, чтобы склеить onCommitted + onUpdated(status=complete)
+// для одной навигации, но не мешает F5 вручную. У старого дебаунса
+// (3000мс таймер) не было замеров — оказалось, что page-fetch не зависит
+// от состояния DOM, и задержка чисто тавтологическая.
+const AUTO_DEDUP_MS = 5000;
 const NATIVE_TIMEOUT_MS = 5000;
 
 const ICON_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-let _autoTimer = null;
-let _lastAutoUrl = "";
-let _lastAutoAt = 0;
+// In-memory dedup: 
+// _autoInflight[tabId] = { url, promise } — если ingest того же URL уже
+// в процессе для этой вкладки, не запускаем второй.
+const _autoInflight = new Map();
 
 async function getSettings() {
   return chrome.storage.sync.get({
@@ -311,32 +315,50 @@ async function updateBadge() {
   }
 }
 
-async function scheduleAutoIngest(tabId, url) {
-  if (_autoTimer) {
-    clearTimeout(_autoTimer);
-    _autoTimer = null;
+// Dedup через chrome.storage.session: _lastAutoAt переживает SW restart.
+// Без этого SW умирает через 30с → _lastAutoUrl сбрасывается → дедуп
+// не работает между сессиями (наблюдалось: первый ingest мгновенно,
+// второй 3с — это как раз дебаунс без дедупа).
+async function _autoDedupCheck(url) {
+  const { lastAutoUrl, lastAutoAt } = await chrome.storage.session.get({
+    lastAutoUrl: "",
+    lastAutoAt: 0,
+  });
+  if (lastAutoUrl === url && Date.now() - lastAutoAt < AUTO_DEDUP_MS) {
+    return true;
   }
-  _autoTimer = setTimeout(async () => {
-    _autoTimer = null;
-    const { autoIngest, notifyAutoIngest } = await getSettings();
-    if (!autoIngest) return;
+  await chrome.storage.session.set({ lastAutoUrl: url, lastAutoAt: Date.now() });
+  return false;
+}
 
-    if (_lastAutoUrl === url && Date.now() - _lastAutoAt < AUTO_DEDUP_MS) {
-      return;
-    }
+async function scheduleAutoIngest(tabId, url) {
+  if (!url) return;
 
-    let tab;
-    try {
-      tab = await chrome.tabs.get(tabId);
-    } catch (e) {
-      return;
-    }
-    if (!tab || !isOzonPdp(tab.url)) return;
+  // 1) Уже в процессе для этой вкладки (onCommitted + onUpdated дубли)?
+  const inflight = _autoInflight.get(tabId);
+  if (inflight && inflight.url === url) {
+    return;
+  }
 
-    const res = await ingestTab(tab);
-    _lastAutoUrl = url;
-    _lastAutoAt = Date.now();
+  // 2) Недавно уже обработали этот URL (persist across SW restarts)?
+  if (await _autoDedupCheck(url)) return;
 
+  const { autoIngest, notifyAutoIngest } = await getSettings();
+  if (!autoIngest) return;
+
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (e) {
+    return;
+  }
+  if (!tab || !isOzonPdp(tab.url)) return;
+
+  // Не ждём DOM: page-fetch делает свой сетевой запрос и не зависит
+  // от состояния страницы. Если page-fetch упадёт — fallback на
+  // rendered-dom всё равно даст что-то.
+  const promise = ingestTab(tab).then(async (res) => {
+    _autoInflight.delete(tabId);
     if (res.status === "added" || res.status === "updated") {
       if (notifyAutoIngest && tab.active) {
         await notifyResult(res, "auto");
@@ -344,7 +366,9 @@ async function scheduleAutoIngest(tabId, url) {
         await updateBadge();
       }
     }
-  }, AUTO_DEBOUNCE_MS);
+  });
+
+  _autoInflight.set(tabId, { url, promise });
 }
 
 // ---------- listeners ----------

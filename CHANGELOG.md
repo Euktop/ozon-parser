@@ -4,6 +4,57 @@
 
 ## [Unreleased]
 
+### Добавлено
+
+- 
+
+### Изменено
+
+- 
+
+### Исправлено
+
+- 
+
+## [0.5.0] — 2026-10-27
+
+### Добавлено
+
+- `scripts/sync_docs.py` — single source of truth для версии:
+  маркеры `<!-- AUTO:VERSION -->` в .md, автосинк `__version__`,
+  `server_version`, `manifest.json`, таблицы поддержки в `SECURITY.md`.
+  `--bump X.Y.Z` создаёт заготовку в CHANGELOG, `--check` — для CI.
+- `parser.py`: `lxml` (C-парсер) вместо `html.parser` — в 3–5 раз
+  быстрее на больших PDP. Fallback на `html.parser`, если lxml нет.
+- `DELETE /items` (без SKU) — атомарная очистка коллекции одним вызовом.
+- Native Messaging action `items.clear` — bulk clear для extension.
+- `ozon-parser dev register` / `dev serve` — итерация без пересборки.
+- Extension: кнопка «Копировать MD», «Все вкладки», «Reload extension + native».
+
+### Изменено
+
+- `background.js`: **persistent native port** (`connectNative` живёт между
+  вызовами, id-based matching). Убирает spawn PyInstaller `.exe`
+  (−1.5–2 с) с каждого ingest — главный источник задержки 2–3 с.
+- **Auto-ingest без debounce**: 3-секундный таймер убран, заменён на
+  event-based dedup через `chrome.storage.session` (5 с) + inflight-карта.
+  `page-fetch` не зависит от DOM — таймер был карго-культом.
+- Триггеры auto-ingest расширены: `tabs.onCreated(pendingUrl)`,
+  `webNavigation.onCommitted` / `onHistoryStateUpdated`,
+  `runtime.onStartup(tabs.query)`.
+- `notifyResult` больше не блокирует на `GET /items` — оптимистичный badge.
+
+### Исправлено
+
+- Popup «Очистить всё» → один вызов `items.clear`, а не N × `items.delete`.
+- Badge на иконке Chrome синхронизируется при `items.clear` / bulk ingest
+  (popup сам зовёт `chrome.action.setBadgeText` в `renderList`).
+- В popup видно `copy_type` (`source` / `rendered`) — сразу ясно, полные
+  ли данные (rendered на фоновой вкладке теряет user_media).
+
+
+## [0.5.0] — 2026-10-27
+
 ### Ускорение (persistent native port)
 
 - `extension/background.js`: `connectNative` держится между вызовами

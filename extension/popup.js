@@ -68,6 +68,37 @@ async function deleteItem(sku) {
   return j;
 }
 
+async function copyMarkdownToClipboard() {
+  const btn = document.getElementById("copy-md");
+  btn.disabled = true;
+  setStatus("Копирование...");
+  try {
+    // Запрашиваем текст в формате markdown через тот же транспорт, что и скачивание
+    const j = await apiCall("flush", { format: "markdown" });
+    if (!j || j.error) {
+      throw new Error(j?.error || "flush failed");
+    }
+    const text = j.text || "";
+    if (!text) {
+      setStatus("Коллекция пуста — нечего копировать", true);
+      return;
+    }
+    
+    // Копируем в системный буфер
+    await navigator.clipboard.writeText(text);
+    setStatus(`Скопировано в буфер (${text.length} символов)`);
+    
+    // Визуальный фидбек: временно меняем текст кнопки
+    const origText = btn.textContent;
+    btn.textContent = "✓ Скопировано";
+    setTimeout(() => { btn.textContent = origText; }, 2000);
+  } catch (e) {
+    setStatus(String(e), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function downloadCollection(fmt) {
   const j = await apiCall("flush", { format: fmt });
   if (!j || j.error) {
@@ -87,6 +118,12 @@ function renderList(items) {
   list.replaceChildren();
   setCount(items.length);
 
+  // FIX BUG 2 & 3: Синхронизируем бейдж на иконке браузера при любом
+  // изменении списка (clearAll, ingestAll, удаление). Popup имеет доступ
+  // к chrome.action, поэтому сообщение в background не нужно.
+  chrome.action.setBadgeText({ text: items.length > 0 ? String(items.length) : "" });
+  chrome.action.setBadgeBackgroundColor({ color: "#005bff" });
+
   if (items.length === 0) {
     list.appendChild(el("div", { class: "empty" },
       "Коллекция пуста. Открой Ozon PDP — она добавится сама."));
@@ -95,7 +132,8 @@ function renderList(items) {
 
   for (const it of items) {
     const title = it.title || it.sku;
-    const meta = `${it.sku} · Q${it.quality ?? 0}/9`;
+    // Показываем метод получения (source/rendered) и Quality (0-9/9)
+    const meta = `${it.sku} · Q${it.quality ?? 0}/9 · ${it.copy_type || 'unknown'}`;
     const del = el("button", {
       class: "item-del",
       title: "Удалить",
@@ -220,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.openOptionsPage();
     window.close();
   });
+  document.getElementById("copy-md").addEventListener("click", copyMarkdownToClipboard);
   document.getElementById("download-md").addEventListener("click", () =>
     downloadCollection("markdown").catch((e) => setStatus(String(e), true)));
   document.getElementById("download-jsonl").addEventListener("click", () =>
