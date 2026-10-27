@@ -16,6 +16,47 @@
 
 - 
 
+## [0.5.1] — 2026-10-27
+
+### Быстрый режим bulk-ingest (fetch + fallback + капча)
+
+- `lib/bulk_fetcher.js`: fast mode — fetch из уже открытой Ozon-вкладки,
+  без создания новых. Замер: 31 URL за ~2 с (~60–80 мс/URL). WAF Ozon
+  пропускает page-context fetch (проверено 31/31 = 200).
+- Fallback на навигацию для URL, где fetch упал (403/network).
+- Обработка капчи: `detectCaptcha()` по final URL + маркерам HTML +
+  аномальной длине (< 30 КБ). При срабатывании — `handleCaptcha()`:
+  открывает активную вкладку, уведомление «Пройдите капчу», polling
+  каждые 3 с до 2 минут. После прохождения — продолжаем bulk.
+- `bulk.html`: checkbox «Быстрый режим» (вкл. по умолчанию). Статус
+  «⚠️ Ждём прохождения капчи» в UI.
+
+### Ускорено (parallel ingest)
+
+- `native_host.py`: параллельная обработка входящих сообщений.
+  ThreadPoolExecutor (I/O: JSON, SQLite, gzip) + ProcessPoolExecutor
+  (парсинг `parse_product`, обход GIL — каждый процесс на своём ядре).
+  Число процессов: `min(6, cpu_count - 1)`, потоков: `proc_workers * 2`.
+  stdin-loop больше не блокируется на парсинге — 5 воркеров bulk шлют
+  сообщения одновременно, host обрабатывает их параллельно.
+- `IngestHtmlUseCase` принимает опциональный `parse_func` — DI для
+  CPU-параллелизма без поломки слоёв CA. `parse_func=None` → старое
+  поведение (`self._parser.parse`).
+- `NATIVE_TIMEOUT_MS` в extension: 5000 → 10000 мс (первый ingest
+  после старта host'а включает spawn процессов ~1-2 с).
+
+### Добавлено
+
+- 
+
+### Изменено
+
+- 
+
+### Исправлено
+
+- 
+
 ## [0.5.0] — 2026-10-27
 
 ### Добавлено

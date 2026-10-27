@@ -65,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
     store: Store
     store_raw_html: bool = True
     config: dict | None = None
-    server_version = "ozon-parser/0.5.0"
+    server_version = "ozon-parser/0.5.1"
 
     def _public_config(self) -> dict:
         """Публичный config для discovery."""

@@ -18,7 +18,7 @@ import gzip
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from ozon_parser.domain.detection import (
     detect_copy_type,
@@ -106,12 +106,18 @@ class IngestHtmlUseCase:
         store_raw_html: bool = True,
         include_images: bool = False,
         notifier: Notifier | None = None,
+        parse_func: Callable[[str, bool], tuple[str, dict[str, Any]]] | None = None,
     ) -> None:
         self._parser = parser
         self._repo = repository
         self._store_raw = store_raw_html
         self._include_images = include_images
         self._notifier = notifier
+        # Опциональный override парсинга. Используется native_host для
+        # параллельного парсинга через ProcessPoolExecutor: сам use case
+        # синхронен, но parse можно выполнить в отдельном процессе и
+        # дождаться результата здесь. Если None — используется self._parser.
+        self._parse_func = parse_func
 
     def execute(self, html: str, *, url_hint: str = "") -> IngestResult:
         payload_len = len(html)
@@ -122,9 +128,12 @@ class IngestHtmlUseCase:
         copy_type = detect_copy_type(html)
 
         try:
-            md, info = self._parser.parse(
-                html, include_images=self._include_images
-            )
+            if self._parse_func is not None:
+                md, info = self._parse_func(html, self._include_images)
+            else:
+                md, info = self._parser.parse(
+                    html, include_images=self._include_images
+                )
         except Exception as e:
             LOG.exception("parse_product failed: %s", e)
             return IngestResult(

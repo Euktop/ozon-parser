@@ -188,6 +188,47 @@ async function ingestAllOpen() {
   }
 }
 
+async function collectLinks() {
+  setStatus("Сбор ссылок...");
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url.includes("ozon.ru")) {
+      setStatus("Откройте страницу Ozon", true);
+      return;
+    }
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        // Ищем все ссылки на товары. Ozon использует разные классы для карточек,
+        // но href всегда содержит /product/.
+        const links = Array.from(document.querySelectorAll('a'))
+          .map(a => a.href)
+          .filter(href => href.includes('/product/'))
+          .map(href => {
+            // Очищаем от query-параметров (реферальных хвостов)
+            const url = new URL(href);
+            return url.origin + url.pathname;
+          });
+        return [...new Set(links)];
+      }
+    });
+
+    const urls = results[0]?.result || [];
+    if (urls.length === 0) {
+      setStatus("Ссылки на товары не найдены", true);
+      return;
+    }
+
+    // Сохраняем во временное хранилище и открываем bulk.html
+    await chrome.storage.session.set({ bulk_urls: urls });
+    chrome.tabs.create({ url: chrome.runtime.getURL("bulk.html") });
+    window.close();
+  } catch (e) {
+    setStatus(String(e), true);
+  }
+}
+
 async function ingestActive() {
   const btn = document.getElementById("ingest");
   btn.disabled = true;
@@ -214,6 +255,13 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("ingest").addEventListener("click", ingestActive);
   const ingestAllBtn = document.getElementById("ingest-all");
   if (ingestAllBtn) ingestAllBtn.addEventListener("click", ingestAllOpen);
+  const collectBtn = document.getElementById("collect-links");
+  if (collectBtn) collectBtn.addEventListener("click", collectLinks);
+  const bulkBtn = document.getElementById("bulk-import");
+  if (bulkBtn) bulkBtn.addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("bulk.html") });
+    window.close();
+  });
   document.getElementById("clear").addEventListener("click", clearAll);
   document.getElementById("settings").addEventListener("click", () => {
     chrome.runtime.openOptionsPage();

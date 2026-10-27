@@ -23,9 +23,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import struct
 import sys
-from typing import Any, BinaryIO
+import threading
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from typing import Any, BinaryIO, Callable
 
 from ozon_parser.application.ingest import IngestHtmlUseCase
 from ozon_parser.infrastructure.parsing.ozon import OzonHtmlParser
@@ -61,7 +64,21 @@ def _write_message(stream: BinaryIO, obj: dict[str, Any]) -> None:
     stream.flush()
 
 
-def _handle(msg: dict[str, Any], store: Store) -> dict[str, Any]:
+def _parse_helper(html: str, include_images: bool) -> tuple[str, dict[str, Any]]:
+    """Top-level wrapper для ProcessPoolExecutor.
+
+    Должна быть picklable: только так ``submit(_parse_helper, ...)``
+    сможет отправить работу в дочерний процесс.
+    """
+    from ozon_parser.parser import parse_product
+    return parse_product(html, include_images=include_images)
+
+
+def _handle(
+    msg: dict[str, Any],
+    store: Store,
+    parse_func: Callable[[str, bool], tuple[str, dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
     """Маршрутизация одного сообщения. Без исключений — ошибки в {"error": ...}."""
     action = msg.get("action")
 
@@ -96,6 +113,7 @@ def _handle(msg: dict[str, Any], store: Store) -> dict[str, Any]:
             repository=store,
             store_raw_html=bool(msg.get("store_raw_html", True)),
             include_images=bool(msg.get("include_images", False)),
+            parse_func=parse_func,
         )
         result = uc.execute(html, url_hint=str(msg.get("url") or ""))
         out = result.to_dict()
@@ -115,7 +133,19 @@ def _handle(msg: dict[str, Any], store: Store) -> dict[str, Any]:
 
 
 def main() -> int:
-    """Точка входа для `ozon-parser-native` / PyInstaller bundle."""
+    """Точка входа для `ozon-parser-native` / PyInstaller bundle.
+
+    Параллелизм:
+      - stdin читается в одном потоке (единственный читатель pipe).
+      - Каждое сообщение → ThreadPoolExecutor (I/O: JSON, SQLite, gzip).
+      - Парсинг HTML → ProcessPoolExecutor (реальный CPU-параллелизм,
+        обход GIL: каждый процесс на своём ядре).
+      - Ответы в stdout под глобальным lock (pipe не потокобезопасен).
+
+    Store остаётся в главном процессе: SQLite `check_same_thread=False` +
+    `RLock` уже thread-safe, commit'ы короткие (~50 мс) и сериализуются
+    только на запись.
+    """
     logging.basicConfig(
         stream=sys.stderr,
         level=logging.WARNING,
@@ -124,6 +154,52 @@ def main() -> int:
 
     db_path = default_db_path()
     store = Store(db_path)
+
+    cpu = os.cpu_count() or 2
+    # Оставляем 1 ядро браузеру + главному stdin-циклу.
+    proc_workers = max(1, min(6, cpu - 1))
+    # Потоков больше, чем процессов: пока N потоков ждут .result() из пула,
+    # остальные обслуживают I/O (SQLite, JSON, gzip).
+    thread_workers = max(4, proc_workers * 2)
+    LOG.warning(
+        "[native] parallel: proc_workers=%d thread_workers=%d (cpu=%d)",
+        proc_workers, thread_workers, cpu,
+    )
+
+    proc_pool = ProcessPoolExecutor(max_workers=proc_workers)
+    thread_pool = ThreadPoolExecutor(max_workers=thread_workers)
+    write_lock = threading.Lock()
+
+    def _parse_func(html: str, include_images: bool) -> tuple[str, dict[str, Any]]:
+        # submit → реальный CPU-параллелизм (parse_product в дочернем процессе).
+        # .result() отпускает GIL этого потока: другие потоки продолжают работу.
+        return proc_pool.submit(_parse_helper, html, include_images).result(timeout=60)
+
+    def _dispatch(msg: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return _handle(msg, store, parse_func=_parse_func)
+        except Exception as e:
+            LOG.exception("handle failed")
+            return {"error": str(e)}
+
+    def _submit_and_reply(msg: dict[str, Any]) -> None:
+        fut = thread_pool.submit(_dispatch, msg)
+
+        def _reply(f) -> None:
+            try:
+                resp = f.result()
+            except Exception as e:
+                resp = {"error": f"dispatch: {e}"}
+            if "id" in msg:
+                resp["id"] = msg["id"]
+            with write_lock:
+                try:
+                    _write_message(sys.stdout.buffer, resp)
+                except Exception as e:
+                    LOG.warning("write failed: %s", e)
+
+        fut.add_done_callback(_reply)
+
     try:
         while True:
             try:
@@ -133,15 +209,11 @@ def main() -> int:
                 break
             if msg is None:
                 break
-            try:
-                resp = _handle(msg, store)
-            except Exception as e:
-                LOG.exception("handle failed")
-                resp = {"error": str(e)}
-            if "id" in msg:
-                resp["id"] = msg["id"]
-            _write_message(sys.stdout.buffer, resp)
+            _submit_and_reply(msg)
     finally:
+        # Дождаться in-flight потоков/процессов, потом закрыть БД.
+        thread_pool.shutdown(wait=True)
+        proc_pool.shutdown(wait=True)
         store.close()
     return 0
 

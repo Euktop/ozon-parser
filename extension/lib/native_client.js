@@ -2,7 +2,10 @@
 // Chrome/Yandex запускают host-процесс при connectNative и убивают
 // при disconnect. Мы держим один порт между вызовами.
 
-const NATIVE_TIMEOUT_MS = 5000;
+// 10 с: нативный host теперь параллелит парсинг через ProcessPoolExecutor.
+// Первый ingest после старта host'а включает spawn процессов (~1-2 с),
+// последующие — 200-500 мс. 5 с было бы впритык.
+const NATIVE_TIMEOUT_MS = 10000;
 
 let _nativePort = null;
 

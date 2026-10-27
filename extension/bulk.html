@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Ozon Parser — Импорт по ссылкам</title>
+  <style>
+    body { font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif;
+           max-width: 720px; margin: 24px auto; padding: 0 16px; color: #222; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    textarea { width: 100%; height: 240px; font: 13px/1.4 monospace;
+               padding: 8px; border: 1px solid #ccc; border-radius: 4px;
+               box-sizing: border-box; resize: vertical; }
+    .actions { margin: 12px 0; display: flex; gap: 8px; align-items: center; }
+    button { padding: 8px 16px; font: inherit; cursor: pointer; border-radius: 4px;
+             border: 1px solid #ccc; background: #fff; }
+    button.primary { background: #005bff; color: #fff; border-color: #005bff; }
+    button.danger { color: #c00; border-color: #fcc; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #status { font-size: 13px; color: #666; min-height: 20px; }
+    #status.error { color: #c00; }
+    .hint { color: #666; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Импорт по ссылкам</h1>
+  <p>Вставь ссылки на товары Ozon (по одной на строку). Расширение откроет каждую в фоне, распарсит и закроет.</p>
+  <textarea id="urls" placeholder="https://www.ozon.ru/product/...
+https://www.ozon.ru/product/..."></textarea>
+  <div class="actions">
+    <button id="start" class="primary">Запустить</button>
+    <button id="cancel" class="danger" disabled>Отмена</button>
+    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; margin-left: 8px;">
+      <input type="checkbox" id="fast-mode" checked> Быстрый режим (без вкладок)
+    </label>
+    <span id="status"></span>
+  </div>
+  <p class="hint">
+    Параллельных воркеров:
+    <input type="number" id="concurrency" value="30" min="1" max="60" style="width:60px;">
+    &nbsp;·&nbsp;
+    Задержка между URL в одном воркере (мс):
+    <input type="number" id="delay" value="0" min="0" max="10000" style="width:80px;">
+  </p>
+  <p class="hint" style="font-size:11px;">
+    <b>Быстрый режим:</b> параллельный fetch из открытой Ozon-вкладки,
+    worker pool. Замеры (60 URL): 30 воркеров → 47 мс/URL (2.8с),
+    10 → 65 мс/URL, 60 → 55 мс/URL (network saturation). 30 — оптимум.
+    Если WAF заблокирует fetch — fallback на навигацию для этого URL.
+    Капча — откроем вкладку, покажем уведомление, подождём (до 2 мин).
+  </p>
+  <p class="hint" style="font-size:11px;">
+    <b>Без быстрого режима:</b> навигация по каждой ссылке в фоновой
+    вкладке (~200 мс/URL). Медленнее, но безопаснее при агрессивном WAF.
+    Воркеров: 5 — оптимум. Больше — упираемся в GIL Python и throttling.
+  </p>
+  <script type="module" src="bulk.js"></script>
+</body>
+</html>

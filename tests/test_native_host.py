@@ -147,6 +147,25 @@ def test_handle_ingest_added(tmp_path: Path) -> None:
         assert s.count() == 1
 
 
+def test_handle_ingest_with_parse_func(tmp_path: Path) -> None:
+    """parse_func прокидывается в use case (эмуляция ProcessPoolExecutor)."""
+    with Store(tmp_path / "c.db") as s:
+        called: list[str] = []
+
+        def fake_parse(html: str, include_images: bool):
+            called.append(html)
+            return ("# MD\n", {"sku": "777", "title": "T"})
+
+        r = _handle(
+            {"action": "ingest", "html": VALID_HTML},
+            s,
+            parse_func=fake_parse,
+        )
+        assert r["status"] == "added"
+        assert r["sku"] == "777"
+        assert len(called) == 1
+
+
 def test_handle_ingest_skipped(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
         r = _handle({"action": "ingest", "html": "short"}, s)

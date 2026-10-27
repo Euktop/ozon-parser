@@ -172,6 +172,27 @@ def test_execute_store_raw_html_false_skips_gzip() -> None:
     assert repo.items["777"]["raw_html"] is None
 
 
+def test_execute_uses_parse_func_when_provided() -> None:
+    """parse_func перекрывает self._parser.parse (для ProcessPoolExecutor)."""
+    repo = FakeRepo()
+    called: list[tuple[str, bool]] = []
+
+    def fake_parse(html: str, include_images: bool):
+        called.append((html, include_images))
+        return ("# MD\n", {"sku": "777", "title": "T"})
+
+    uc = IngestHtmlUseCase(
+        parser=FakeParser(result=("# OTHER\n", {"sku": "999"})),
+        repository=repo,
+        parse_func=fake_parse,
+    )
+    res = uc.execute(VALID_HTML)
+    assert res.status == "added"
+    assert res.sku == "777"  # из fake_parse, не из parser'а
+    assert len(called) == 1
+    assert called[0][0] == VALID_HTML
+
+
 def test_execute_include_images_passed_to_parser() -> None:
     repo = FakeRepo()
     parser = FakeParser(result=("# MD\n", {"sku": "777"}))

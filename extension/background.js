@@ -44,6 +44,7 @@ async function getSettings() {
 import { apiCall } from "./lib/api_client.js";
 import { disconnectNative } from "./lib/native_client.js";
 import { isOzonUrl, isOzonPdp } from "./lib/url_matcher.js";
+import { runFastBulk } from "./lib/bulk_fetcher.js";
 
 // ---------- Ozon fetch (page-context) ----------
 
@@ -202,6 +203,272 @@ async function _autoDedupCheck(url) {
   return false;
 }
 
+// ---------- Bulk URL Import (worker pool) ----------
+let _bulkCancel = false;
+
+// Один воркер: переиспользует СВОЮ вкладку для нескольких URL.
+// Преимущества перед «новая вкладка на URL»:
+//   - экономит 200-500 мс на create/remove
+//   - Chrome не дёргает tab strip
+// 3 воркера параллельно → ×3 к скорости.
+async function _bulkWorker(workerId, queue, delayMs, stats, sendProgress) {
+  const tab = await chrome.tabs.create({ url: "about:blank", active: false });
+  const tStart = performance.now();
+  try {
+    while (queue.length > 0 && !_bulkCancel) {
+      const url = queue.shift();
+      if (!url) break;
+
+      const tNav = performance.now();
+      try {
+        await chrome.tabs.update(tab.id, { url });
+      } catch (e) {
+        stats.done++; stats.err++;
+        console.warn(`[bulk-w${workerId}] update failed:`, e);
+        sendProgress();
+        continue;
+      }
+      await _waitForTabComplete(tab.id, 15000);
+      const dtNav = (performance.now() - tNav).toFixed(0);
+
+      const cur = await chrome.tabs.get(tab.id);
+      if (!cur || !isOzonPdp(cur.url)) {
+        stats.done++; stats.err++;
+        console.warn(`[bulk-w${workerId}] not PDP: ${cur?.url}`);
+        sendProgress();
+        continue;
+      }
+
+      const tIngest = performance.now();
+      const res = await ingestTab(cur);
+      const dtIngest = (performance.now() - tIngest).toFixed(0);
+
+      stats.done++;
+      if (res.status === "added" || res.status === "updated") stats.ok++;
+      else if (res.status === "skipped") stats.skip++;
+      else stats.err++;
+
+      const sku = (url.match(/\/product\/[^/]*-?([0-9]+)/) || [])[1] || "?";
+      console.log(`[bulk-w${workerId}] ${sku} → ${res.status} (nav=${dtNav}ms, ingest=${dtIngest}ms)`);
+      sendProgress();
+
+      if (delayMs > 0 && queue.length > 0) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  } finally {
+    try { await chrome.tabs.remove(tab.id); } catch (_) {}
+    console.log(`[bulk-w${workerId}] done in ${((performance.now() - tStart) / 1000).toFixed(1)}s`);
+  }
+}
+
+function _waitForTabComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { chrome.tabs.onUpdated.removeListener(onUpd); } catch (_) {}
+      resolve();
+    };
+    const onUpd = (tId, info) => {
+      if (tId === tabId && info.status === "complete") finish();
+    };
+    chrome.tabs.onUpdated.addListener(onUpd);
+    const timer = setTimeout(finish, timeoutMs);
+  });
+}
+
+// Капча: открываем активную вкладку, показываем уведомление, ждём прохождения.
+// Polling каждые 3 с: пробуем fetch оригинального URL из этой вкладки.
+// Пока в ответе капча — продолжаем ждать. Таймаут — 2 минуты, отмена — _bulkCancel.
+async function handleCaptcha(url) {
+  const tab = await chrome.tabs.create({ url, active: true });
+
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: ICON_1PX,
+    title: "Ozon Parser — нужна помощь",
+    message: "Пройдите капчу в открытой вкладке (ждём до 2 минут).",
+    priority: 2,
+    requireInteraction: true,
+  });
+
+  const deadline = Date.now() + 120000;  // 2 минуты
+  let html = null;
+
+  try {
+    while (Date.now() < deadline) {
+      if (_bulkCancel) {
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+
+      try {
+        const res = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: "MAIN",
+          func: async (u) => {
+            try {
+              const r = await fetch(u, { credentials: "include" });
+              return {
+                status: r.status,
+                finalUrl: r.url,
+                html: r.ok ? await r.text() : null,
+              };
+            } catch (e) {
+              return { status: 0, html: null, error: String(e) };
+            }
+          },
+          args: [url],
+        });
+        const out = res[0]?.result;
+        if (out && out.html && out.html.length > 30000) {
+          const finalUrl = (out.finalUrl || "").toLowerCase();
+          const lowHtml = out.html.toLowerCase();
+          const stillCaptcha =
+            finalUrl.includes("/captcha") ||
+            finalUrl.includes("challenge") ||
+            finalUrl.includes("/safety/") ||
+            lowHtml.includes('data-widget="webchallengepage"') ||
+            lowHtml.includes("защита от роботов") ||
+            lowHtml.includes("подтвердите, что вы не робот");
+          if (!stillCaptcha) {
+            html = out.html;
+            break;
+          }
+        }
+      } catch (e) {
+        // ещё на капче — продолжаем ждать
+      }
+    }
+  } finally {
+    try { await chrome.tabs.remove(tab.id); } catch (_) {}
+  }
+
+  if (!html) {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: ICON_1PX,
+      title: "Ozon Parser — капча не пройдена",
+      message: "Таймаут 2 минуты. Bulk-ingest прерван.",
+      priority: 2,
+    });
+    return null;
+  }
+
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: ICON_1PX,
+    title: "Ozon Parser — капча пройдена",
+    message: "Продолжаем обработку коллекции.",
+    priority: 0,
+  });
+
+  return { solved: true, html };
+}
+
+async function startBulkIngestFast(urls, concurrency) {
+  _bulkCancel = false;
+  const total = urls.length;
+  const t0 = performance.now();
+  // Храним актуальные stats — иначе финальный sendProgress перезапишет их.
+  let _lastStats = { done: 0, ok: 0, skip: 0, err: 0 };
+
+  const sendProgress = (stats, finished = false, error = null, extra = null) => {
+    _lastStats = { ...stats };
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    const msg = {
+      type: "bulk-progress",
+      done: stats.done, total,
+      ok: stats.ok, skip: stats.skip, err: stats.err,
+      finished, error, elapsed,
+    };
+    if (extra && extra.timing) {
+      const t = extra.timing;
+      msg.detail =
+        `fetch ${(t.fetch / 1000).toFixed(1)}с · ` +
+        `ingest ${(t.ingest / 1000).toFixed(1)}с` +
+        (t.fallback ? ` · fallback ${t.fallback}` : "") +
+        (t.captcha ? ` · капча ${t.captcha}` : "");
+    }
+    chrome.runtime.sendMessage(msg).catch(() => {});
+  };
+
+  console.log(`[fast-bulk] start: ${total} URLs, concurrency=${concurrency}`);
+  sendProgress({ done: 0, ok: 0, skip: 0, err: 0 });
+
+  const timing = await runFastBulk(
+    urls,
+    concurrency,
+    (stats, extra) => {
+      sendProgress(stats, false, null, extra);
+    },
+    () => _bulkCancel,
+    ingestTab,
+    async (captchaUrl) => {
+      console.log(`[fast-bulk] asking user to solve captcha: ${captchaUrl}`);
+      return await handleCaptcha(captchaUrl);
+    }
+  );
+
+  const totalElapsed = ((performance.now() - t0) / 1000).toFixed(1);
+  const avgTotal = timing.fetchCount > 0
+    ? ((performance.now() - t0) / timing.fetchCount).toFixed(0)
+    : 0;
+  const avgFetch = timing.fetchCount > 0 ? (timing.fetch / timing.fetchCount).toFixed(0) : 0;
+  const avgIngest = timing.ingestCount > 0 ? (timing.ingest / timing.ingestCount).toFixed(0) : 0;
+
+  console.log(`[fast-bulk] complete in ${totalElapsed}s:`);
+  console.log(`  total avg: ${avgTotal}ms/URL`);
+  console.log(`  fetch: ${(timing.fetch / 1000).toFixed(2)}s total, ${avgFetch}ms avg, ${timing.fetchCount} fetches`);
+  console.log(`  ingest: ${(timing.ingest / 1000).toFixed(2)}s total, ${avgIngest}ms avg, ${timing.ingestCount} ingests`);
+  console.log(`  ok: ${_lastStats.ok}, skip: ${_lastStats.skip}, err: ${_lastStats.err}`);
+  console.log(`  fallback: ${timing.fallback}, captcha: ${timing.captcha}`);
+
+  // Финал — с реальными stats из последнего прогресса
+  sendProgress(_lastStats, true, null, { timing });
+  await updateBadge();
+}
+
+async function startBulkIngest(urls, delayMs, concurrency) {
+  _bulkCancel = false;
+  const total = urls.length;
+  const nWorkers = Math.max(1, Math.min(concurrency || 3, total));
+  const queue = [...urls];
+  const stats = { done: 0, ok: 0, skip: 0, err: 0 };
+  const t0 = performance.now();
+
+  const sendProgress = (finished = false, error = null) => {
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    chrome.runtime.sendMessage({
+      type: "bulk-progress",
+      done: stats.done, total,
+      ok: stats.ok, skip: stats.skip, err: stats.err,
+      finished, error, elapsed,
+    }).catch(() => {});
+  };
+
+  console.log(`[bulk] start: ${total} URLs, ${nWorkers} workers, delay=${delayMs}ms`);
+  sendProgress();
+
+  await Promise.all(
+    Array.from({ length: nWorkers }, (_, i) =>
+      _bulkWorker(i + 1, queue, delayMs, stats, sendProgress)
+    )
+  );
+
+  const totalElapsed = ((performance.now() - t0) / 1000).toFixed(1);
+  const avg = stats.done > 0 ? ((performance.now() - t0) / stats.done).toFixed(0) : 0;
+  console.log(
+    `[bulk] complete: ${stats.ok} ok, ${stats.skip} skip, ${stats.err} err ` +
+    `in ${totalElapsed}s (avg ${avg}ms/URL, ${nWorkers} workers)`
+  );
+  sendProgress(true);
+  await updateBadge();
+}
+
 async function scheduleAutoIngest(tabId, url) {
   if (!url) return;
 
@@ -343,6 +610,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .then(sendResponse)
       .catch((e) => sendResponse({ status: "error", error: String(e) }));
     return true;
+  }
+  if (msg && msg.type === "bulk-ingest") {
+    if (msg.fastMode) {
+      startBulkIngestFast(msg.urls || [], msg.concurrency || 5);
+    } else {
+      startBulkIngest(
+        msg.urls || [],
+        msg.delay || 0,
+        msg.concurrency || 5
+      );
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (msg && msg.type === "bulk-cancel") {
+    _bulkCancel = true;
+    sendResponse({ ok: true });
+    return false;
   }
   if (msg && msg.type === "reload-native") {
     // Dev: принудительно закрыть порт — Chrome убьёт host-процесс,

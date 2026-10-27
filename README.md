@@ -19,7 +19,7 @@
 
 ## Статус
 
-**<!-- AUTO:VERSION -->0.5.0<!-- /AUTO -->**. Все P0–P4 из `ARCHITECTURE.md` закрыты.
+**<!-- AUTO:VERSION -->0.5.1<!-- /AUTO -->**. Все P0–P4 из `ARCHITECTURE.md` закрыты.
 Архитектура — 4 слоя CA: `domain` / `application` / `infrastructure` /
 `presentation`. **330+ автотестов**, включая 7 архитектурных (правило
 зависимостей) и регрессии на 10 багов.
