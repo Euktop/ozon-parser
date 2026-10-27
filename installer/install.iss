@@ -7,7 +7,7 @@
 ; Требует: Inno Setup 6 (https://jrsoftware.org/isinfo.php)
 
 #define AppName "Ozon Parser"
-#define AppVersion "0.5.1"
+#define AppVersion "0.6.0"
 #define AppPublisher "Ozon Parser"
 #define AppExeName "ozon-parser.exe"
 #define ExtensionId "bmdjfjhckhfifhdnohiojamggfnlbcgf"

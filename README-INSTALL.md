@@ -58,4 +58,4 @@
 
 Win+R → `appwiz.cpl` → найди «Ozon Parser» → Удалить.
 
-Регистрация native host и ForceList очистятся автоматически.
+Регистрация native host очистится автоматически.

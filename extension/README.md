@@ -1,15 +1,14 @@
 # Ozon Parser — браузерное расширение (Manifest V3)
 
-Отправляет текущую Ozon PDP в локальный `ozon-parser serve` одним
-кликом / горячей клавишей / контекстным меню.
+Отправляет текущую Ozon PDP в локальное Python-ядро `ozon-parser` через
+Native Messaging одним кликом / горячей клавишей / контекстным меню.
 
 ## Установка
 
-1. Запустить HTTP-сервер:
+1. Открыть `chrome://extensions` (или `edge://extensions`).
 
-       ozon-parser serve
-
-2. Открыть `chrome://extensions` (или `edge://extensions`).
+   > HTTP-сервер (`ozon-parser serve`) для работы **не нужен**.
+   > Расширение общается с ядром напрямую через Native Messaging.
 
 3. Включить **Developer mode** (тумблер справа сверху).
 
@@ -49,7 +48,7 @@ Chrome и Yandex — `allowed_origins` в manifest host работает в об
 После ingest появляется нотификация: `added: 3184585029 — Быстрая Зарядка 67W`
 или `updated: ...`. Badge на иконке показывает число товаров в коллекции.
 
-### Popup (0.2.0)
+### Popup
 
 Клик по иконке открывает окно со списком товаров:
 
