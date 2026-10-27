@@ -1,6 +1,5 @@
 @echo off
-rem Сборка: .exe (PyInstaller) + .crx (Chrome --pack-extension).
-rem Требует: pip install pyinstaller, установленный Chrome/Edge.
+rem Сборка: .exe (PyInstaller). Требует: pip install pyinstaller.
 
 setlocal
 cd /d "%~dp0\.."
@@ -15,14 +14,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [3/3] Packing extension to dist\extension.crx
-python build\pack_crx.py
-if errorlevel 1 (
-    echo [!] CRX pack failed
-    exit /b 1
-)
-
 :done
 echo.
-echo Готово: dist\ozon-parser.exe, dist\ozon-parser-native.exe, dist\extension.crx
+echo Готово: dist\ozon-parser.exe, dist\ozon-parser-native.exe
 endlocal

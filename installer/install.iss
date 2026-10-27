@@ -38,10 +38,10 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 [Files]
 Source: "..\dist\ozon-parser.exe";        DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ozon-parser-native.exe"; DestDir: "{app}"; Flags: ignoreversion
-; .crx и распакованная копия — fallback, если ForceList заблокирован
-; корпоративной политикой. skipifsourcedoesntexist: если Chrome не был
-; найден при build.bat, установка всё равно продолжается.
-Source: "..\dist\extension.crx";          DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; Распакованная копия расширения — пользователь загружает её через
+; chrome://extensions → Load unpacked. .crx больше не нужен:
+; Chrome 137+ блокирует drag-drop .crx, ForceList на домашних ПК
+; не работает. См. CHANGELOG 0.6.1.
 Source: "..\extension\*";                 DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

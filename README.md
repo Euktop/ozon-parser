@@ -19,7 +19,7 @@
 
 ## Статус
 
-**<!-- AUTO:VERSION -->0.6.0<!-- /AUTO -->**. Закрыты P0–P5.
+**<!-- AUTO:VERSION -->0.6.1<!-- /AUTO -->**. Закрыты P0–P5.
 Архитектура — 4 слоя CA: `domain` / `application` / `infrastructure` /
 `presentation`. **Автотесты: см. `pytest --collect-only -q | tail -1`**
 (включая 6 архитектурных: правило
@@ -229,7 +229,7 @@ Badge на иконке — число товаров.
 
 `POST /flush` отвечает **только** `text/plain` (формат из `format`).
 
-> Актуальная версия — <!-- AUTO:VERSION -->0.6.0<!-- /AUTO -->. Что нового в 0.6.x:
+> Актуальная версия — <!-- AUTO:VERSION -->0.6.1<!-- /AUTO -->. Что нового в 0.6.x:
 > fast bulk mode (fetch-based, ~60-80 мс/URL), капча-хендлер, `DELETE /items`,
 > `dev register/serve` для hot-reload, persistent native port,
 > frozen build без ProcessPool (первый ingest ~300 мс вместо ~10 с).

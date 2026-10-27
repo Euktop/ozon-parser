@@ -16,6 +16,31 @@
 
 - 
 
+## [0.6.1] — 2026-10-27
+
+### Удалено
+
+- `extension.crx` из release assets и `install.iss` — Chrome 137+ блокирует
+  drag-drop .crx, ForceList на домашних ПК не работает, «Load unpacked»
+  из папки `extension/` — единственный работающий путь. `.crx` был мёртвым
+  грузом (никем не использовался в install flow).
+- `extension/updates.xml` — обслуживал только ForceList (который удалён
+  в 0.6.0). Ссылка на .crx в GitHub Release больше не нужна.
+- `build/pack_crx.py` и шаг `[3/3]` из `build.bat` — упаковка .crx больше
+  не нужна. `chrome --pack-extension` удалён в Chrome 137+.
+
+### Добавлено
+
+- 
+
+### Изменено
+
+- 
+
+### Исправлено
+
+- 
+
 ## [0.6.0] — 2026-10-27
 
 ### Исправлено (frozen build)
