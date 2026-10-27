@@ -5,21 +5,24 @@
 const DEFAULT_PORT = 8765;
 
 async function loadSettings() {
-  const { port, autoIngest, notifyAutoIngest } =
+  const { port, autoIngest, notifyAutoIngest, devMode } =
     await chrome.storage.sync.get({
       port: DEFAULT_PORT,
       autoIngest: false,
       notifyAutoIngest: true,
+      devMode: false,
     });
   document.getElementById("port").value = port;
   document.getElementById("auto").checked = !!autoIngest;
   document.getElementById("notify-auto").checked = !!notifyAutoIngest;
+  document.getElementById("dev-mode").checked = !!devMode;
 }
 
 async function saveSettings() {
   const portVal = parseInt(document.getElementById("port").value, 10);
   const autoVal = document.getElementById("auto").checked;
   const notifyAutoVal = document.getElementById("notify-auto").checked;
+  const devVal = document.getElementById("dev-mode").checked;
   if (!Number.isFinite(portVal) || portVal < 1 || portVal > 65535) {
     setStatus("Порт должен быть 1..65535", true);
     return;
@@ -28,6 +31,7 @@ async function saveSettings() {
     port: portVal,
     autoIngest: autoVal,
     notifyAutoIngest: notifyAutoVal,
+    devMode: devVal,
   });
   setStatus("Сохранено", false);
   await probeConfig();
@@ -67,4 +71,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadSettings();
   await probeConfig();
   document.getElementById("save").addEventListener("click", saveSettings);
+  document.getElementById("reload-ext").addEventListener("click", async () => {
+    // Закрываем native host (освобождает python.exe, следующий
+    // apiCall поднимет новый процесс со свежим кодом), потом
+    // перезапускаем SW расширения.
+    await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "reload-native" }, () => resolve());
+    });
+    chrome.runtime.reload();
+  });
 });

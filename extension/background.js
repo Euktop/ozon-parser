@@ -39,37 +39,58 @@ async function getSettings() {
 
 // ---------- transport: native → HTTP fallback ----------
 
-async function nativeCall(action, params) {
-  let port;
+// Persistent native port. Chrome убивает процесс host'а при disconnect(),
+// а spawn .exe ~1–2 сек на каждый ingest — это и была основная задержка.
+// Порт живёт между вызовами; при крэше host'а _nativePort = null,
+// следующий apiCall переподключится (Chrome сам поднимет процесс).
+let _nativePort = null;
+
+function _getNativePort() {
+  if (_nativePort) return _nativePort;
   try {
-    port = chrome.runtime.connectNative("com.ozon_parser");
+    _nativePort = chrome.runtime.connectNative("com.ozon_parser");
+    _nativePort.onDisconnect.addListener(() => {
+      // host crashed / not registered / chrome убил — следующий вызов
+      // создаст новый порт (и Chrome поднимет новый процесс).
+      // Читаем lastError: без этого Chrome пишет warning в SW Console
+      // на каждый disconnect (в т.ч. при отсутствии host'а).
+      const err = chrome.runtime.lastError;
+      if (err) {
+        console.warn("[ozon] native host disconnected:", err.message);
+      }
+      _nativePort = null;
+    });
+    return _nativePort;
   } catch (e) {
-    return null; // host not registered → fallback to HTTP
+    _nativePort = null;
+    return null;
   }
+}
+
+async function nativeCall(action, params) {
+  const port = _getNativePort();
+  if (!port) return null;
   return new Promise((resolve) => {
     let done = false;
+    const id = (crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : String(Date.now()) + "-" + Math.random();
     const finish = (val) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      try {
-        port.disconnect();
-      } catch (_) {}
+      try { port.onMessage.removeListener(handler); } catch (_) {}
       resolve(val);
     };
+    const handler = (msg) => {
+      if (msg && msg.id === id) finish(msg);
+    };
     const timer = setTimeout(() => finish(null), NATIVE_TIMEOUT_MS);
-    port.onMessage.addListener((msg) => finish(msg));
-    port.onDisconnect.addListener(() => {
-      if (chrome.runtime.lastError) {
-        // host crashed / not found → fallback
-        finish(null);
-      } else {
-        finish({ error: "native host disconnected" });
-      }
-    });
+    port.onMessage.addListener(handler);
     try {
-      port.postMessage({ action, ...params });
+      port.postMessage({ action, ...params, id });
     } catch (e) {
+      _nativePort = null;
       finish(null);
     }
   });
@@ -97,6 +118,11 @@ async function httpCall(action, params) {
       `${base}/items/${encodeURIComponent(params.sku)}`,
       { method: "DELETE" }
     );
+    return r.json();
+  }
+  if (action === "items.clear") {
+    const r = await fetch(`${base}/items`, { method: "DELETE" });
+    if (!r.ok) return { error: `DELETE /items → ${r.status}` };
     return r.json();
   }
   if (action === "ingest") {
@@ -248,7 +274,21 @@ async function notifyResult(res, source = "manual") {
     priority: 0,
     requireInteraction: false,
   });
-  await updateBadge();
+  // Оптимистичный badge: не блокируем notifyResult на GET /items.
+  // added → +1 локально; updated → без изменений; error/skipped → откат
+  // на синхронный updateBadge(). Фоновое выравнивание через 2 с.
+  if (res.status === "added") {
+    try {
+      const { count = 0 } = await chrome.storage.local.get({ count: 0 });
+      const newCount = count + 1;
+      await chrome.storage.local.set({ count: newCount });
+      chrome.action.setBadgeText({ text: String(newCount) });
+      chrome.action.setBadgeBackgroundColor({ color: "#005bff" });
+    } catch (_) {}
+  } else if (res.status !== "updated") {
+    await updateBadge();
+  }
+  setTimeout(() => { updateBadge(); }, 2000);
 }
 
 async function updateBadge() {
@@ -256,11 +296,16 @@ async function updateBadge() {
     const j = await apiCall("items.list", {});
     if (!j || j.error) {
       chrome.action.setBadgeText({ text: "" });
+      await chrome.storage.local.set({ count: 0 });
       return;
     }
     const n = (j.items || []).length;
     chrome.action.setBadgeText({ text: n > 0 ? String(n) : "" });
     chrome.action.setBadgeBackgroundColor({ color: "#005bff" });
+    // Синхронизируем локальный счётчик с реальным — иначе
+    // оптимистичный инкремент в notifyResult разъедется после reload
+    // service worker'а.
+    await chrome.storage.local.set({ count: n });
   } catch (e) {
     chrome.action.setBadgeText({ text: "" });
   }
@@ -310,6 +355,47 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   scheduleAutoIngest(tabId, url);
 });
 
+// Ctrl+Click / middle-click: onUpdated сработает для фоновой вкладки, но
+// pendingUrl фиксирует URL раньше — успеваем поставить в очередь, пока
+// страница ещё грузится (важно для auto-ingest).
+chrome.tabs.onCreated.addListener((tab) => {
+  const url = (tab && (tab.pendingUrl || tab.url)) || "";
+  if (!isOzonPdp(url)) return;
+  scheduleAutoIngest(tab.id, url);
+});
+
+// SPA-навигация Ozon (листинг → PDP) не всегда даёт onUpdated:
+// history.pushState меняет URL без полной навигации.
+// onHistoryStateUpdated ловит именно это; onCommitted — обычную навигацию
+// (срабатывает раньше onUpdated status=complete).
+if (chrome.webNavigation) {
+  chrome.webNavigation.onCommitted.addListener((details) => {
+    if (details.frameId !== 0) return;
+    if (!isOzonPdp(details.url)) return;
+    scheduleAutoIngest(details.tabId, details.url);
+  });
+  chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details.frameId !== 0) return;
+    if (!isOzonPdp(details.url)) return;
+    scheduleAutoIngest(details.tabId, details.url);
+  });
+}
+
+// Session restore: Chrome перезапустился с открытыми PDP-табами —
+// onUpdated не сработает (навигации не было). onStartup + tabs.query.
+chrome.runtime.onStartup.addListener(async () => {
+  // Восстанавливаем badge и прогреваем native host одним вызовом:
+  // updateBadge() дёргает apiCall("items.list") → создаёт persistent
+  // порт → к первому клику host уже поднят.
+  updateBadge().catch(() => {});
+  try {
+    const tabs = await chrome.tabs.query({ url: "*://*.ozon.ru/product/*" });
+    for (const t of tabs) {
+      if (t.id) scheduleAutoIngest(t.id, t.url);
+    }
+  } catch (_) {}
+});
+
 chrome.runtime.onInstalled.addListener(async () => {
   await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
@@ -353,5 +439,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .catch((e) => sendResponse({ status: "error", error: String(e) }));
     return true;
+  }
+  if (msg && msg.type === "ingest-tab") {
+    // Bulk ingest из popup: явный tabId, вкладка может быть неактивной.
+    chrome.tabs
+      .get(msg.tabId)
+      .then((tab) => ingestTab(tab))
+      .then(sendResponse)
+      .catch((e) => sendResponse({ status: "error", error: String(e) }));
+    return true;
+  }
+  if (msg && msg.type === "reload-native") {
+    // Dev: принудительно закрыть порт — Chrome убьёт host-процесс,
+    // следующий apiCall поднимет его заново со свежим кодом.
+    if (_nativePort) {
+      try { _nativePort.disconnect(); } catch (_) {}
+      _nativePort = null;
+    }
+    sendResponse({ ok: true });
+    return false;
   }
 });

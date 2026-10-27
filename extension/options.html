@@ -50,6 +50,25 @@
     badge обновится, уведомления не будет.
   </p>
 
+  <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+  <p class="hint"><strong>Dev</strong> (для разработки):</p>
+
+  <div class="row">
+    <label for="dev-mode">Dev mode</label>
+    <input type="checkbox" id="dev-mode">
+  </div>
+  <p class="hint" style="margin: 0 0 12px 192px; font-size: 12px;">
+    Показывает dev-действия. Не влияет на ingest.
+  </p>
+
+  <div class="row">
+    <button id="reload-ext">Reload extension + native</button>
+  </div>
+  <p class="hint" style="margin: 0 0 12px 192px; font-size: 12px;">
+    Перезапускает native host и расширение — нужно после правки
+    Python-кода, чтобы новый код подхватился без переустановки.
+  </p>
+
   <div class="row">
     <button id="save">Сохранить</button>
     <span id="status" class="status"></span>

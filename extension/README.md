@@ -39,7 +39,11 @@
 - **MD / JSONL / CSV** — скачать коллекцию. Файл сохраняется через
   `chrome.downloads` в «Загрузки» браузера (с диалогом «Сохранить как»).
   Прямого доступа к файловой системе сервера нет.
-- **Очистить всё** — удалить все товары (с `confirm()`)
+- **Очистить всё** — удалить все товары одним вызовом (`items.clear`
+  native / `DELETE /items` HTTP), с `confirm()`
+- **Все вкладки** — bulk ingest всех открытых `*.ozon.ru/product/*`.
+  На 10 PDP — ~15–30 с, статус `Готово: N добавлено, M пропущено,
+  K ошибок`.
 - **Ingest текущей** — отправить PDP активной вкладки
 - **⚙** — открыть Options
 
@@ -49,6 +53,12 @@
 автоматически отправлять HTML при заходе на страницу `/product/...`.
 
 - **Opt-in**: по умолчанию выключено.
+- **Триггеры**: `tabs.onUpdated` + `tabs.onCreated` (`pendingUrl` —
+  Ctrl+Click и middle-click, пока вкладка ещё грузится) +
+  `webNavigation.onCommitted` (обычная навигация, раньше `onUpdated`) +
+  `webNavigation.onHistoryStateUpdated` (SPA-переход листинг → PDP через
+  `history.pushState`) + `runtime.onStartup` (session restore: Chrome
+  перезапустился с открытыми PDP, навигации не было).
 - **Дебаунс 3 с** — SPA-навигация Ozon дёргает `tabs.onUpdated`
   несколько раз, дебаунс ждёт «успокоения».
 - **Дедуп 60 с** — тот же URL в течение минуты не отправляется повторно.
@@ -98,3 +108,31 @@
 навигации. Из SW это не побороть. `chrome.scripting` + `world: MAIN`
 даёт page-контекст, `document.documentElement.outerHTML` — гарантированный
 fallback без сети.
+
+### Persistent native port
+
+`background.js` держит **один** `chrome.runtime.connectNative(...)` между
+вызовами (id-based matching). Раньше каждый запрос открывал и закрывал
+порт — Chrome спавнил PyInstaller `.exe` заново (~1.5–2 с), это была
+основная задержка при клике Ingest. Сейчас второй и последующие ingest —
+~300–700 мс.
+
+При крэше host'а порт сбрасывается (`onDisconnect` → `_nativePort = null`),
+следующий вызов автоматически поднимет новый процесс. Также `onStartup`
+делает `updateBadge()` — это и восстанавливает badge после перезапуска
+Chrome, и прогревает порт до первого клика.
+
+## Dev-режим
+
+Без пересборки `.exe` + installer на каждое изменение Python-кода.
+
+1. `pip install -e .[dev]` — lxml, watchfiles, cryptography.
+2. `ozon-parser dev register` — регистрирует host как `.bat`/`.sh` wrapper
+   (`python -m ozon_parser.presentation.native_host`), а не `.exe`.
+   Отказывается работать из frozen `.exe`.
+3. Правь Python-код, в Options → **Reload extension + native** — Chrome
+   перезапустит SW, следующий ingest создаст новый host-процесс
+   с актуальным кодом.
+4. `ozon-parser dev serve` — опционально: HTTP-сервер с автоперезапуском
+   при правке `.py`. Нужен только для fallback-транспорта (bookmarklet /
+   Web UI) — native host работает без него.

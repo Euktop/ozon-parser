@@ -135,6 +135,16 @@ async function clearAll() {
     return;
   }
   try {
+    setStatus("Очистка...");
+    // Bulk clear: один вызов вместо N × items.delete.
+    // Native — action items.clear; HTTP — DELETE /items (0.4.0+).
+    const res = await apiCall("items.clear", {});
+    if (res && !res.error && typeof res.cleared === "number") {
+      setStatus(`Очищено: ${res.cleared}`);
+      await reload();
+      return;
+    }
+    // Fallback: старое ядро без items.clear → поштучно.
     const { items } = await fetchItems();
     let n = 0;
     for (const it of items) {
@@ -145,6 +155,37 @@ async function clearAll() {
     setStatus(`Очищено: ${n}`);
   } catch (e) {
     setStatus(String(e), true);
+  }
+}
+
+async function ingestAllOpen() {
+  const btn = document.getElementById("ingest-all");
+  if (btn) btn.disabled = true;
+  try {
+    setStatus("Поиск PDP-вкладок...");
+    const tabs = await chrome.tabs.query({ url: "*://*.ozon.ru/product/*" });
+    if (tabs.length === 0) {
+      setStatus("Нет открытых PDP");
+      return;
+    }
+    let ok = 0, skip = 0, err = 0;
+    for (let i = 0; i < tabs.length; i++) {
+      const t = tabs[i];
+      setStatus(`Ingest ${i + 1}/${tabs.length}...`);
+      const r = await chrome.runtime.sendMessage({
+        type: "ingest-tab",
+        tabId: t.id,
+      });
+      if (r && (r.status === "added" || r.status === "updated")) ok++;
+      else if (r && r.status === "skipped") skip++;
+      else err++;
+    }
+    await reload();
+    setStatus(`Готово: ${ok} добавлено, ${skip} пропущено, ${err} ошибок`);
+  } catch (e) {
+    setStatus(String(e), true);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -172,6 +213,8 @@ async function ingestActive() {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("refresh").addEventListener("click", reload);
   document.getElementById("ingest").addEventListener("click", ingestActive);
+  const ingestAllBtn = document.getElementById("ingest-all");
+  if (ingestAllBtn) ingestAllBtn.addEventListener("click", ingestAllOpen);
   document.getElementById("clear").addEventListener("click", clearAll);
   document.getElementById("settings").addEventListener("click", () => {
     chrome.runtime.openOptionsPage();
