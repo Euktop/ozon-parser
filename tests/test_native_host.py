@@ -125,6 +125,16 @@ def test_handle_items_delete(tmp_path: Path) -> None:
         assert s.count() == 0
 
 
+def test_handle_items_clear(tmp_path: Path) -> None:
+    with Store(tmp_path / "c.db") as s:
+        for i in range(3):
+            s.upsert(sku=str(i), url="", info={"title": f"T{i}"},
+                     markdown="", quality=1, copy_type="source")
+        r = _handle({"action": "items.clear"}, s)
+        assert r["cleared"] == 3
+        assert s.count() == 0
+
+
 def test_handle_ingest_added(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
         r = _handle(

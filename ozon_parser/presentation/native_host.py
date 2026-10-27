@@ -83,6 +83,10 @@ def _handle(msg: dict[str, Any], store: Store) -> dict[str, Any]:
             return {"error": "missing sku"}
         return {"deleted": store.delete(sku), "sku": sku}
 
+    if action == "items.clear":
+        # Bulk clear: один вызов вместо N × items.delete — атомарно и быстро.
+        return {"cleared": store.clear()}
+
     if action == "ingest":
         html = msg.get("html") or ""
         if not isinstance(html, str):

@@ -41,6 +41,7 @@ from ozon_parser.config import (
     write_template_if_missing,
 )
 from ozon_parser.daemon import poll_once, run_forever
+from ozon_parser.dev import cmd_dev_register, cmd_dev_serve
 from ozon_parser.infrastructure.parsing.ozon import OzonHtmlParser
 from ozon_parser.logging_utils import default_log_path, setup_logging
 from ozon_parser.native.register import (
@@ -1012,6 +1013,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="если не указано — отчёт по обоим",
     )
     p_svc_status.set_defaults(func=_cmd_service_status)
+
+    p_dev = sub.add_parser(
+        "dev", help="dev-режим: быстрая итерация без переустановки"
+    )
+    dev_sub = p_dev.add_subparsers(dest="dev_cmd", required=True)
+
+    p_dev_reg = dev_sub.add_parser(
+        "register",
+        help="зарегистрировать Native host как wrapper (не .exe)",
+    )
+    p_dev_reg.set_defaults(func=cmd_dev_register)
+
+    p_dev_serve = dev_sub.add_parser(
+        "serve",
+        help="HTTP-сервер с автоперезапуском при изменении .py",
+    )
+    p_dev_serve.add_argument(
+        "--port", type=int, default=None,
+        help="порт (по умолчанию из конфига)",
+    )
+    p_dev_serve.add_argument(
+        "--log-file", default=None,
+        help="путь к лог-файлу дочернего процесса",
+    )
+    p_dev_serve.set_defaults(func=cmd_dev_serve)
 
     p_native = sub.add_parser(
         "native", help="Native Messaging host: регистрация в браузерах"

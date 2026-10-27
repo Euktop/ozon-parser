@@ -228,6 +228,20 @@ def test_clean_desc_node_does_not_mutate_soup() -> None:
     assert "Show more" not in desc
 
 
+def test_bs_parser_matches_availability() -> None:
+    """lxml в deps → _BS_PARSER = lxml; без lxml — fallback на html.parser."""
+    from ozon_parser.parser import _BS_PARSER
+    try:
+        import lxml  # noqa: F401
+        has_lxml = True
+    except ImportError:
+        has_lxml = False
+    if has_lxml:
+        assert _BS_PARSER == "lxml"
+    else:
+        assert _BS_PARSER == "html.parser"
+
+
 # --- реальные фикстуры (skip, если файлов нет) ----------------------------
 
 

@@ -2,6 +2,52 @@
 
 Все заметные изменения проекта. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [Unreleased]
+
+### Ускорение (persistent native port)
+
+- `extension/background.js`: `connectNative` держится между вызовами
+  (id-based matching) вместо `connectNative+disconnect` на каждый
+  запрос. Убирает spawn PyInstaller `.exe` (~1.5–2 с) с каждого
+  ingest — главный источник задержки 2–3 с.
+- `notifyResult` больше не ждёт `GET /items`: badge обновляется
+  оптимистично (+1 при `added`), фоновое выравнивание через 2 с.
+
+### Auto-ingest расширен
+
+- `manifest.json`: permission `webNavigation`.
+- `webNavigation.onCommitted` + `onHistoryStateUpdated` — SPA-переходы
+  Ozon (листинг → PDP) и ранний триггер до `onUpdated`.
+- `tabs.onCreated` с `pendingUrl` — Ctrl+Click / middle-click, пока
+  вкладка ещё грузится.
+- `runtime.onStartup` + `tabs.query` — session restore (Chrome
+  перезапустился с открытыми PDP).
+- Popup: кнопка «Все вкладки» — bulk ingest всех открытых PDP.
+
+### Extension: прочее
+
+- Popup «Очистить всё» → один вызов `items.clear` (native)
+  / `DELETE /items` (HTTP) вместо N × `items.delete`.
+- Options: «Reload extension + native» и checkbox «Dev mode» —
+  перезапуск без пересборки при правке Python-кода.
+
+### Добавлено
+
+- `DELETE /items` (без SKU) — очистка всей коллекции одним вызовом.
+  Popup «Очистить всё» теперь делает один запрос, а не N × DELETE.
+- Native Messaging action `items.clear` — bulk clear для extension.
+- `ozon-parser dev register` — регистрация host как wrapper (.bat/.sh)
+  с чек-листом; отказывается работать из frozen .exe.
+- `ozon-parser dev serve` — HTTP-сервер с автоперезапуском при правке
+  `.py` (через `watchfiles`, новая dev-зависимость).
+
+### Изменено
+
+- `parser.py`: `lxml` вместо `html.parser` — парсинг PDP в 3–5 раз
+  быстрее на больших страницах. Fallback на `html.parser`, если
+  `lxml` недоступен. `lxml` добавлен в основные зависимости.
+
+
 ## [0.4.0] — 2026-10-21
 
 ### Добавлено

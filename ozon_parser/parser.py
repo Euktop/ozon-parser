@@ -29,6 +29,14 @@ WIDGET_ID_RE = re.compile(r"^state-(.+)-(\d+)-([^-]+)-(\d+)$")
 HASHTAG_RE = re.compile(r"#[\w\-]+")
 LABEL_CLASS_RE = re.compile(r"^b5_7_\d+-a4$")
 
+# lxml — C-парсер, в 3–5 раз быстрее html.parser на больших PDP.
+# Fallback на html.parser, если lxml нет (например, минимальная сборка).
+try:
+    import lxml  # noqa: F401
+    _BS_PARSER = "lxml"
+except ImportError:  # pragma: no cover
+    _BS_PARSER = "html.parser"
+
 
 # ============================================================================
 #  helpers
@@ -178,7 +186,7 @@ def _clean_desc_node(section: Tag) -> str:
     с оригиналом, поэтому `decompose()` на дочернем узле удалял его
     и из оригинала. Здесь пересобираем независимое дерево.
     """
-    node = BeautifulSoup(str(section), "html.parser")
+    node = BeautifulSoup(str(section), _BS_PARSER)
     for bad in node.select("#section-characteristics, button"):
         bad.decompose()
     for h in node.find_all(["h1", "h2"]):
@@ -644,7 +652,7 @@ def render_markdown(p: dict, include_images: bool = False) -> str:
 def parse_product(
     html: str, include_images: bool = False
 ) -> tuple[str, dict[str, Any]]:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, _BS_PARSER)
     product = collect_product(soup, html)
     md = render_markdown(product, include_images=include_images)
     return md, product

@@ -13,6 +13,7 @@ authors = [{ name = 'Ozon Parser' }]
 
 dependencies = [
     'beautifulsoup4>=4.12',
+    'lxml>=5.0',
     'pyperclip>=1.8',
     "tomli>=2.0; python_version < '3.11'",
     "pywin32>=306; sys_platform == 'win32'",
@@ -25,6 +26,7 @@ dev = [
     'ruff>=0.6',
     'mypy>=1.11',
     'cryptography>=42',  # build/gen_extension_key.py
+    'watchfiles>=0.24',  # dev serve --reload
 ]
 
 [project.scripts]

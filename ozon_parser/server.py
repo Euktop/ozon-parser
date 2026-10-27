@@ -141,6 +141,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:  # noqa: N802
         u = urlparse(self.path)
+        # DELETE /items (без sku) — очистить всю коллекцию.
+        # Popup «Очистить всё» раньше шёл по одному SKU — N round-trip'ов
+        # и рассинхрон при сбое на середине. Теперь — атомарный вызов.
+        if u.path in ("/items", "/items/"):
+            n = self.store.clear()
+            return self._send_json(200, {"cleared": n})
         if u.path.startswith("/items/"):
             sku = u.path[len("/items/"):].strip("/")
             if not sku:

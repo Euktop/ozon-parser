@@ -153,6 +153,16 @@ def test_delete(server) -> None:
     assert store.count() == 0
 
 
+def test_delete_all(server) -> None:
+    """DELETE /items (без sku) очищает коллекцию одним вызовом."""
+    port, store = server
+    _req(port, "POST", "/ingest", body=SYNTHETIC_SOURCE.encode("utf-8"))
+    st, data, _ = _req(port, "DELETE", "/items")
+    assert st == 200
+    assert json.loads(data)["cleared"] == 1
+    assert store.count() == 0
+
+
 def test_flush_response(server) -> None:
     port, _ = server
     _req(port, "POST", "/ingest", body=SYNTHETIC_SOURCE.encode("utf-8"))
