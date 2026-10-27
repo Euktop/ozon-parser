@@ -16,32 +16,11 @@
 
 - 
 
-## [0.6.1] — 2026-10-27
-
-### Удалено
-
-- `extension.crx` из release assets и `install.iss` — Chrome 137+ блокирует
-  drag-drop .crx, ForceList на домашних ПК не работает, «Load unpacked»
-  из папки `extension/` — единственный работающий путь. `.crx` был мёртвым
-  грузом (никем не использовался в install flow).
-- `extension/updates.xml` — обслуживал только ForceList (который удалён
-  в 0.6.0). Ссылка на .crx в GitHub Release больше не нужна.
-- `build/pack_crx.py` и шаг `[3/3]` из `build.bat` — упаковка .crx больше
-  не нужна. `chrome --pack-extension` удалён в Chrome 137+.
-
-### Добавлено
-
-- 
-
-### Изменено
-
-- 
-
-### Исправлено
-
-- 
-
 ## [0.6.0] — 2026-10-27
+
+Полный diff с 0.5.1: первый Ingest в frozen-сборке **~300 мс вместо ~10 с**,
+backpressure защищает от OOM при bulk-ingest, установщик больше не тянет
+мёртвые `.crx` / `updates.xml`.
 
 ### Исправлено (frozen build)
 
@@ -68,6 +47,20 @@
 - `native_host.py`: `LOG.warning` → `LOG.info` для стартового сообщения
   о параллелизме (frozen / dev). WARNING в stderr native host'а попадал в
   `chrome_debug.log` Chrome'а и засорял его на каждом старте.
+- `installer/install.iss`: `AppVersion` 0.5.1 → 0.6.0.
+
+### Удалено (установщик)
+
+- `extension.crx` из release assets и `install.iss`. Chrome 137+ блокирует
+  drag-drop .crx, а ForceList на домашних ПК не работает (проверено на
+  `chrome://policy` — Chrome ставит `[BLOCKED]` с сообщением «компьютер
+  не является корпоративным»). Единственный рабочий путь — `Load
+  unpacked` из папки `extension/`; установщик копирует её в `{app}`.
+  `.crx` был мёртвым грузом: копировался, но не использовался.
+- `extension/updates.xml` — обслуживал только ForceList (ссылка на .crx
+  в GitHub Release). Некому читать — удалён.
+- `build/pack_crx.py` и шаг `[3/3]` из `build.bat` — упаковка .crx больше
+  не нужна. `chrome --pack-extension` удалён в Chrome 137+.
 
 ## [0.5.1] — 2026-10-27
 
