@@ -8,49 +8,10 @@
 // chrome.downloads.download({saveAs:true}). Файл падает в «Загрузки»
 // браузера, никакого доступа к ФС сервера.
 
-const DEFAULT_PORT = 8765;
+import { apiCall } from "./lib/message_bus.js";
+import { el, setStatus, setCount } from "./lib/ui_helpers.js";
+
 const DATE = new Date().toISOString().slice(0, 10);
-
-// Все запросы к ядру — через background.js (native → HTTP fallback).
-// popup не знает, через что идёт обмен: native stdio или HTTP.
-async function apiCall(action, params = {}) {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: "api", action, params },
-      (resp) => {
-        if (chrome.runtime.lastError) {
-          resolve({ error: chrome.runtime.lastError.message });
-        } else {
-          resolve(resp || { error: "no response" });
-        }
-      }
-    );
-  });
-}
-
-function setStatus(text, isError = false) {
-  const el = document.getElementById("status");
-  el.textContent = text || "";
-  el.classList.toggle("error", !!isError);
-}
-
-function setCount(n) {
-  document.getElementById("count").textContent = String(n);
-}
-
-function el(tag, attrs = {}, ...children) {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "class") e.className = v;
-    else if (k === "onclick") e.addEventListener("click", v);
-    else if (v !== null && v !== undefined) e.setAttribute(k, v);
-  }
-  for (const c of children) {
-    if (typeof c === "string") e.appendChild(document.createTextNode(c));
-    else if (c) e.appendChild(c);
-  }
-  return e;
-}
 
 async function fetchItems() {
   const j = await apiCall("items.list");

@@ -20,6 +20,24 @@
    - **Port**: 8765 (по умолчанию)
    - **Auto-ingest**: ☑ (опционально, чтобы товары добавлялись сами)
 
+### Яндекс Браузер
+
+Yandex Browser — Chromium (как Chrome, Edge, Brave), расширение работает
+без изменений. Отличия только в установке и в путях native host.
+
+1. **Native host:** `ozon-parser dev register` (или `native register`)
+   уже регистрирует `Software\Yandex\YandexBrowser\NativeMessagingHosts`
+   (Windows), `~/Library/Application Support/Yandex/YandexBrowser/NativeMessagingHosts`
+   (macOS), `~/.config/yandex-browser/NativeMessagingHosts` (Linux).
+2. **Загрузка расширения:** открой `browser://extensions` (в свежих
+   версиях Yandex), либо `chrome://extensions` — оба работают. Включи
+   **Режим разработчика** → **Загрузить распакованное** → папка `extension/`.
+3. **Проверка:** Options (⚙ в popup) внизу покажет «Браузер: Яндекс Браузер
+   (yandex)». Если `(chrome)` — расширение загружено в Chrome, не в Yandex.
+
+Extension ID стабилен (`bmdjfjhckhfifhdnohiojamggfnlbcgf`) и одинаков в
+Chrome и Yandex — `allowed_origins` в manifest host работает в обоих.
+
 ## Использование
 
 | Способ | Действие |

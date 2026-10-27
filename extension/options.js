@@ -2,6 +2,9 @@
 // (порт) и GET /config у локального сервера (для отображения
 // актуальных значений TOML-конфига).
 
+import { detectBrowser, browserDisplayName } from "./lib/browser_detect.js";
+import { apiCall } from "./lib/message_bus.js";
+
 const DEFAULT_PORT = 8765;
 
 async function loadSettings() {
@@ -52,12 +55,7 @@ async function probeConfig() {
   const el = document.getElementById("config-info");
   // Через background.js: native → HTTP fallback. Popup и Options не
   // ходят в сеть напрямую — им не важно, есть ли serve.
-  const resp = await new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: "api", action: "health", params: {} },
-      (r) => resolve(r || { error: "no response" })
-    );
-  });
+  const resp = await apiCall("health", {});
   if (resp && resp.ok) {
     el.textContent = `Native: работает. Товаров: ${resp.count}.`;
     el.style.color = "#090";
@@ -68,6 +66,14 @@ async function probeConfig() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // Диагностика: показываем браузер, в котором работает расширение.
+  // Полезно, чтобы понимать, куда идёт native port (Yandex vs Chrome).
+  const bid = detectBrowser();
+  const bInfo = document.getElementById("browser-info");
+  if (bInfo) {
+    bInfo.textContent = `Браузер: ${browserDisplayName(bid)} (${bid})`;
+  }
+
   await loadSettings();
   await probeConfig();
   document.getElementById("save").addEventListener("click", saveSettings);

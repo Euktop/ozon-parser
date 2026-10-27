@@ -170,6 +170,9 @@
     REM chrome://extensions → Developer mode → Load unpacked → extension/
     REM HTTP-сервер не нужен: расширение работает через Native Messaging.
     REM `ozon-parser serve` — только для bookmarklet / Web UI.
+    REM Яндекс Браузер: browser://extensions (или chrome://extensions),
+    REM тот же Load unpacked → extension/. Native host регистрируется
+    REM автоматически (`native register` / `dev register`).
 
 **Клик по иконке** открывает popup:
 

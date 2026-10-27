@@ -41,140 +41,11 @@ async function getSettings() {
   });
 }
 
-// ---------- transport: native → HTTP fallback ----------
-
-// Persistent native port. Chrome убивает процесс host'а при disconnect(),
-// а spawn .exe ~1–2 сек на каждый ingest — это и была основная задержка.
-// Порт живёт между вызовами; при крэше host'а _nativePort = null,
-// следующий apiCall переподключится (Chrome сам поднимет процесс).
-let _nativePort = null;
-
-function _getNativePort() {
-  if (_nativePort) return _nativePort;
-  try {
-    _nativePort = chrome.runtime.connectNative("com.ozon_parser");
-    _nativePort.onDisconnect.addListener(() => {
-      // host crashed / not registered / chrome убил — следующий вызов
-      // создаст новый порт (и Chrome поднимет новый процесс).
-      // Читаем lastError: без этого Chrome пишет warning в SW Console
-      // на каждый disconnect (в т.ч. при отсутствии host'а).
-      const err = chrome.runtime.lastError;
-      if (err) {
-        console.warn("[ozon] native host disconnected:", err.message);
-      }
-      _nativePort = null;
-    });
-    return _nativePort;
-  } catch (e) {
-    _nativePort = null;
-    return null;
-  }
-}
-
-async function nativeCall(action, params) {
-  const port = _getNativePort();
-  if (!port) return null;
-  return new Promise((resolve) => {
-    let done = false;
-    const id = (crypto && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : String(Date.now()) + "-" + Math.random();
-    const finish = (val) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      try { port.onMessage.removeListener(handler); } catch (_) {}
-      resolve(val);
-    };
-    const handler = (msg) => {
-      if (msg && msg.id === id) finish(msg);
-    };
-    const timer = setTimeout(() => finish(null), NATIVE_TIMEOUT_MS);
-    port.onMessage.addListener(handler);
-    try {
-      port.postMessage({ action, ...params, id });
-    } catch (e) {
-      _nativePort = null;
-      finish(null);
-    }
-  });
-}
-
-async function httpCall(action, params) {
-  const { port } = await getSettings();
-  const base = `http://127.0.0.1:${port}`;
-  if (action === "health") {
-    const r = await fetch(`${base}/health`);
-    return r.json();
-  }
-  if (action === "items.list") {
-    const r = await fetch(`${base}/items`);
-    if (!r.ok) return { error: `GET /items → ${r.status}` };
-    return r.json();
-  }
-  if (action === "items.get") {
-    const r = await fetch(`${base}/items/${encodeURIComponent(params.sku)}`);
-    if (!r.ok) return { error: `GET /items/${params.sku} → ${r.status}` };
-    return { item: { markdown: await r.text() } };
-  }
-  if (action === "items.delete") {
-    const r = await fetch(
-      `${base}/items/${encodeURIComponent(params.sku)}`,
-      { method: "DELETE" }
-    );
-    return r.json();
-  }
-  if (action === "items.clear") {
-    const r = await fetch(`${base}/items`, { method: "DELETE" });
-    if (!r.ok) return { error: `DELETE /items → ${r.status}` };
-    return r.json();
-  }
-  if (action === "ingest") {
-    const url = `${base}/ingest?url=${encodeURIComponent(params.url || "")}`;
-    const r = await fetch(url, {
-      method: "POST",
-      body: params.html || "",
-      headers: { "Content-Type": "text/plain" },
-    });
-    if (!r.ok) {
-      const text = await r.text();
-      return { status: "error", error: `${r.status}: ${text.slice(0, 200)}` };
-    }
-    return r.json();
-  }
-  if (action === "flush") {
-    const r = await fetch(`${base}/flush`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format: params.format || "markdown", to: "response" }),
-    });
-    if (!r.ok) {
-      const text = await r.text();
-      return { error: `${r.status}: ${text.slice(0, 200)}` };
-    }
-    return { text: await r.text(), format: params.format || "markdown" };
-  }
-  return { error: `unknown action: ${action}` };
-}
-
-async function apiCall(action, params = {}) {
-  const native = await nativeCall(action, params);
-  if (native !== null) return native;
-  return await httpCall(action, params);
-}
+import { apiCall } from "./lib/api_client.js";
+import { disconnectNative } from "./lib/native_client.js";
+import { isOzonUrl, isOzonPdp } from "./lib/url_matcher.js";
 
 // ---------- Ozon fetch (page-context) ----------
-
-function isOzonUrl(url) {
-  return typeof url === "string" && url.includes("ozon.ru");
-}
-
-function isOzonPdp(url) {
-  return (
-    typeof url === "string" &&
-    /^https?:\/\/(www\.)?ozon\.ru\/product\//.test(url)
-  );
-}
 
 async function fetchSourceInPage(tabId) {
   try {
@@ -476,10 +347,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === "reload-native") {
     // Dev: принудительно закрыть порт — Chrome убьёт host-процесс,
     // следующий apiCall поднимет его заново со свежим кодом.
-    if (_nativePort) {
-      try { _nativePort.disconnect(); } catch (_) {}
-      _nativePort = null;
-    }
+    disconnectNative();
     sendResponse({ ok: true });
     return false;
   }
