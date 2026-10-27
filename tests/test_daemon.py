@@ -73,20 +73,20 @@ def test_candidates_source_beats_rendered() -> None:
 
 def test_poll_once_empty(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
-        res = poll_once(s, text="", html=None)
+        res = poll_once(s, text="", html="")
         assert res["status"] == "skipped"
         assert s.count() == 0
 
 
 def test_poll_once_garbage(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
-        res = poll_once(s, text="hello world", html=None)
+        res = poll_once(s, text="hello world", html="")
         assert res["status"] == "skipped"
 
 
 def test_poll_once_added(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
-        res = poll_once(s, text=SYNTHETIC_SOURCE, html=None)
+        res = poll_once(s, text=SYNTHETIC_SOURCE, html="")
         assert res["status"] == "added"
         assert res["sku"] == "777"
         assert res["copy_type"] == "source"
@@ -98,7 +98,7 @@ def test_poll_once_deduped(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
         r1 = poll_once(s, text=SYNTHETIC_SOURCE, html=None)
         r2 = poll_once(
-            s, text=SYNTHETIC_SOURCE, html=None, last_hash=r1["hash"]
+            s, text=SYNTHETIC_SOURCE, html="", last_hash=r1["hash"]
         )
         assert r1["status"] == "added"
         assert r2["status"] == "deduped"
@@ -109,7 +109,7 @@ def test_poll_once_updated_price(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
         r1 = poll_once(s, text=SYNTHETIC_SOURCE, html=None)
         modified = SYNTHETIC_SOURCE.replace('"price":"500"', '"price":"600"')
-        r2 = poll_once(s, text=modified, html=None, last_hash=r1["hash"])
+        r2 = poll_once(s, text=modified, html="", last_hash=r1["hash"])
         assert r2["status"] == "updated"
         assert r2["sku"] == "777"
         assert s.count() == 1
@@ -127,7 +127,7 @@ def test_poll_once_stores_raw_html_gzip(tmp_path: Path) -> None:
     import gzip
 
     with Store(tmp_path / "c.db") as s:
-        res = poll_once(s, text=SYNTHETIC_SOURCE, html=None, store_raw_html=True)
+        res = poll_once(s, text=SYNTHETIC_SOURCE, html="", store_raw_html=True)
         assert res["status"] == "added"
         assert res["raw_html_size"] > 0
 
@@ -140,7 +140,7 @@ def test_poll_once_stores_raw_html_gzip(tmp_path: Path) -> None:
 
 def test_poll_once_no_raw_html_when_disabled(tmp_path: Path) -> None:
     with Store(tmp_path / "c.db") as s:
-        res = poll_once(s, text=SYNTHETIC_SOURCE, html=None, store_raw_html=False)
+        res = poll_once(s, text=SYNTHETIC_SOURCE, html="", store_raw_html=False)
         assert res["status"] == "added"
         assert res["raw_html_size"] == 0
 

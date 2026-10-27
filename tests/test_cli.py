@@ -224,7 +224,7 @@ def test_rm_without_yes(
 ) -> None:
     db = tmp_path / "c.db"
     _seed(db, 2)
-    assert main(["--db", str(db), "rm", "1"]) == 2
+    assert main(["--db", str(db), "rm", "1"]) == 1
     assert "--yes" in capsys.readouterr().err
     with Store(db) as s:
         assert s.count() == 2

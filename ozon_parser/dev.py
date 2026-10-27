@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     import argparse
 
 
-def cmd_dev_register(args: "argparse.Namespace") -> int:
+def cmd_dev_register(_args: "argparse.Namespace") -> int:
     """Регистрирует Native Messaging host как wrapper-скрипт (не .exe).
 
     Отказывается работать из frozen .exe: dev-режим требует editable

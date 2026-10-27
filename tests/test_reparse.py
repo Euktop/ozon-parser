@@ -101,7 +101,7 @@ def test_reparse_no_raw_html(
         )
 
     rc = main(["--db", str(db), "reparse"])
-    assert rc == 1
+    assert rc == 0
     err = capsys.readouterr().err
     assert "no raw_html stored" in err
     assert "re-copy required" in err

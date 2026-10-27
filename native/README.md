@@ -15,9 +15,8 @@
 
 1. Скачать `ozon-parser-setup.exe` (или собрать самому — см. ниже)
 2. Двойной клик → «Установить»
-3. В мастере вставить **Extension ID** из `chrome://extensions`
-4. Load unpacked extension (или из Chrome Web Store, когда будет)
-5. Открыть Ozon PDP → товар в popup
+3. Открыть `chrome://extensions` → включить «Режим разработчика» → Load unpacked → папка `extension/`
+4. Открыть Ozon PDP → товар в popup
 
 ## Ручная регистрация (dev)
 
@@ -47,15 +46,29 @@ Chrome пишет stderr native host в свой лог. На Windows:
 
 Проверить host без Chrome:
 
-```cmd
-rem Windows: отправить health через pipe (framing: 4-byte length + JSON)
+**PowerShell** (Windows):
+
+```powershell
+$msg = '{"action":"health"}' | ConvertTo-Json -Compress
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($msg)
+$len = [BitConverter]::GetBytes([int]$bytes.Length)
+$out = $len + $bytes
+$out | ozon-parser-native.exe
+```
+
+**bash** (Linux/macOS):
+
+```bash
 python -c "import struct,sys; msg=json.dumps({'action':'health'}).encode(); sys.stdout.buffer.write(struct.pack('<I',len(msg))+msg)" | ozon-parser-native
 ```
 
-Выведет бинарный ответ. Прочитать:
+Выведет бинарный ответ. Прочитать (Python):
 
-```cmd
-python -c "import struct,sys; d=sys.stdin.buffer.read(4); n=struct.unpack('<I',d)[0]; print(sys.stdin.buffer.read(n).decode())" < ответ
+```python
+import struct, sys
+d = sys.stdin.buffer.read(4)
+n = struct.unpack("<I", d)[0]
+print(sys.stdin.buffer.read(n).decode())
 ```
 
 ## Сборка .exe
@@ -74,6 +87,19 @@ iscc installer\install.iss
 
 Результат: `installer\Output\ozon-parser-setup.exe`.
 
+## Параллелизм: frozen vs dev
+
+В **frozen** (PyInstaller onefile, `.exe`) сборке `ProcessPoolExecutor`
+отключён: spawn 6 копий `.exe` на Windows распаковывал архив заново на
+каждом старте — первый ingest занимал ~10 с. Вместо пула процессов —
+только `ThreadPoolExecutor`; `lxml` отпускает GIL на C-парсинге, этого
+достаточно. В **dev-режиме** (`python -m ozon_parser.presentation.native_host`
+или `ozon-parser dev serve`) работает полный ProcessPool.
+
+Плюс `threading.Semaphore(thread_workers * 2)` — backpressure. Без него
+при bulk-ingest на 100+ URL очередь in-flight задач растёт в память
+быстрее, чем `parse_product` успевает обрабатывать.
+
 ## Протокол
 
 См. `presentation/native_host.py` — docstring модуля. Действия:
@@ -84,11 +110,13 @@ iscc installer\install.iss
 | `items.list` | — | `{items: [...]}` |
 | `items.get` | `{sku}` | `{item: dict}` |
 | `items.delete` | `{sku}` | `{deleted, sku}` |
-| `ingest` | `{html, url?}` | `{status, sku, quality, ...}` |
+| `items.clear` | — | `{cleared: int}` |
+| `ingest` | `{html, url?, store_raw_html?, include_images?}` | `{status, sku, quality, ...}` |
 | `flush` | `{format}` | `{text, format, count}` |
 
 Поле `id` (опционально) — эхо в ответе для матчинга.
+Таймаут ожидания ответа в клиенте (extension): 10000 мс.
 
 ## Fallback на HTTP
 
-`background.js` сначала пробует `nativeCall()`, при `null` (host не зарегистрирован / crashed / timeout 5s) — `httpCall()` на `http://127.0.0.1:<port>`. Это позволяет работать bookmarklet'у и Web UI, а пользователю с `serve` — не трогать native.
+`background.js` сначала пробует `nativeCall()`, при `null` (host не зарегистрирован / crashed / timeout 10s) — `httpCall()` на `http://127.0.0.1:<port>`. Это позволяет работать bookmarklet'у и Web UI, а пользователю с `serve` — не трогать native.

@@ -62,17 +62,6 @@ def test_domain_imports_only_stdlib() -> None:
     assert not violations, "\n".join(violations)
 
 
-def test_reexports_preserve_identity() -> None:
-    """Старые пути — re-export shims: тот же объект, не копия."""
-    from ozon_parser import detection, quality
-    from ozon_parser.domain import detection as d_dom
-    from ozon_parser.domain import quality as q_dom
-
-    assert detection.detect_copy_type is d_dom.detect_copy_type
-    assert detection.is_usable_ozon_copy is d_dom.is_usable_ozon_copy
-    assert detection.looks_like_ozon_product_page is d_dom.looks_like_ozon_product_page
-    assert quality.quality_score is q_dom.quality_score
-
 
 
 def test_application_does_not_import_infrastructure() -> None:
@@ -116,13 +105,14 @@ def test_infrastructure_package_exists() -> None:
     )
 
 
-def test_presentation_does_not_parse_directly() -> None:
-    """Stage 5: presentation не дублирует parse+quality — это работа use case.
+def test_presentation_composition_root() -> None:
+    """Stage 5: presentation не дублирует parse+quality, но может
+    выступать composition root и импортировать concrete adapters.
 
     Регрессия: до Stage 5 daemon.poll_once, server._handle_ingest и
-    cli._cmd_reparse каждый импортировали parse_product и quality_score
-    и содержали по копии ingest-логики. После Stage 5 эти импорты
-    запрещены в presentation — единственный вход через use case.
+    cli._cmd_reparse содержали по копии ingest-логики. После Stage 5
+    они зовут use case, но легитимно импортируют OzonHtmlParser для
+    инъекции в use case.
     """
     for fname in ("cli.py", "daemon.py", "server.py"):
         f = ROOT / fname
@@ -132,6 +122,9 @@ def test_presentation_does_not_parse_directly() -> None:
         )
         assert "from ozon_parser.quality import" not in src, (
             f"{fname} импортирует quality напрямую — дублирование ingest-логики"
+        )
+        assert "from ozon_parser.infrastructure.parsing" in src, (
+            f"{fname} должен импортировать OzonHtmlParser как composition root"
         )
 
 

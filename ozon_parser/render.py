@@ -29,7 +29,7 @@ CSV_FIELDS = [
 ]
 
 
-def _jsonable(item: dict[str, Any]) -> dict[str, Any]:
+def _prepare_item(item: dict[str, Any]) -> dict[str, Any]:
     """Готовим запись к JSON: исключаем raw_html (bytes | None).
 
     raw_html — сырой HTML, он не должен утекать в JSONL/CSV.
@@ -83,7 +83,7 @@ def render_collection_jsonl(items: list[dict[str, Any]]) -> str:
     if not items:
         return ""
     return "".join(
-        json.dumps(_jsonable(it), ensure_ascii=False, separators=(",", ":")) + "\n"
+        json.dumps(_prepare_item(it), ensure_ascii=False, separators=(",", ":")) + "\n"
         for it in items
     )
 

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -126,13 +127,16 @@ def test_empty_sku_rejected(tmp_path: Path) -> None:
 def test_raw_html_and_hash(tmp_path: Path) -> None:
     with _make(tmp_path) as s:
         raw = b"<html>payload</html>"
+        html_text = "<html>payload</html>"
         s.upsert(
             sku="1", url="", info=_info(), markdown="",
             quality=5, copy_type="source", raw_html=raw,
+            html_text=html_text,
         )
         row = s.get("1")
         assert row is not None
-        assert row["html_hash"] != ""
+        assert row["html_hash"] is not None
+        assert row["html_hash"] == hashlib.sha1(html_text.encode()).hexdigest()
         assert row["raw_html"] == raw
 
 

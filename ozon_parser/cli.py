@@ -8,9 +8,16 @@
     count       — число записей
     clear       — очистка коллекции (требует --yes)
     once        — один проход по буферу
+    read        — диагностика клипборда
     daemon      — фоновый цикл по буферу
     serve       — HTTP-приём из bookmarklet / расширения
     bookmarklet — генератор JS-закладки
+    rm          — удалить один/несколько SKU
+    reparse     — перепарсить raw_html
+    export-fixture — выгрузить raw_html в tests/fixtures
+    service     — автозапуск (install/uninstall/status)
+    native      — регистрация Native Messaging host
+    dev         — dev-режим (register/serve)
     config      — показать / отредактировать TOML-конфиг
 
 Приоритет значений: CLI-флаг > TOML-конфиг > встроенный дефолт.
@@ -28,7 +35,7 @@ import sys
 import threading
 from pathlib import Path
 from types import FrameType
-from typing import Sequence
+from typing import Callable, Sequence
 
 from ozon_parser import __version__
 from ozon_parser.application.reparse import ReparseUseCase
@@ -137,9 +144,9 @@ def _cmd_flush(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     fmt = args.format if args.format is not None else cfg.default_format
     target = args.to if args.to is not None else cfg.default_target
-    quiet = bool(getattr(args, "quiet", False))
-    dry_run = bool(getattr(args, "dry_run", False))
-    per_sku = bool(getattr(args, "per_sku", False))
+    quiet = args.quiet
+    dry_run = args.dry_run
+    per_sku = args.per_sku
 
     with _open_store(args.db) as s:
         if args.only is not None:
@@ -164,6 +171,9 @@ def _cmd_flush(args: argparse.Namespace) -> int:
             print("flush --per-sku requires --to DIR", file=sys.stderr)
             return 2
         path = Path(target)
+        if path.exists() and not path.is_dir():
+            print(f"--per-sku requires a directory, got file: {path}", file=sys.stderr)
+            return 2
         if not dry_run:
             path.mkdir(parents=True, exist_ok=True)
         for it in items:
@@ -220,7 +230,7 @@ def _cmd_rm(args: argparse.Namespace) -> int:
     """
     if not args.yes:
         print("refusing to delete without --yes", file=sys.stderr)
-        return 2
+        return 1
 
     wanted: list[str] = []
     for raw in args.sku:
@@ -298,13 +308,15 @@ def _cmd_once(args: argparse.Namespace) -> int:
     return 1
 
 
-def _cmd_read(args: argparse.Namespace) -> int:
+def _cmd_read(_args: argparse.Namespace) -> int:
     """Диагностика клипборда: что видит парсер.
 
     Полезно, когда `once` говорит `skipped`: показывает длины, результаты
     детекта, превью и наличие маркеров в text/html.
     """
     from ozon_parser.domain.detection import (
+        STRONG_MARKERS,
+        WEAK_MARKERS,
         detect_copy_type,
         is_usable_ozon_copy,
         looks_like_ozon_product_page,
@@ -347,11 +359,7 @@ def _cmd_read(args: argparse.Namespace) -> int:
     print("--- markers ---")
     marker_list = (
         '<html', '<!doctype', '<div', '<script', 'ozon.ru',
-        'id="__ozon"', 'id="layoutpage"', 'data-server-rendered="true"',
-        'id="section-characteristics"', 'data-widget="webproductmainwidget"',
-        'data-widget="webpdpgrid"', 'class="client-state"',
-        'window.__nuxt__.state',
-    )
+    ) + STRONG_MARKERS + WEAK_MARKERS
     text_low = text.lower()
     html_low = (html or "").lower()
     for marker in marker_list:
@@ -370,6 +378,28 @@ def _cmd_read(args: argparse.Namespace) -> int:
         print(f"html[0:300]: {preview}")
 
     return 0
+
+
+def _setup_signal_handlers(stop_event: threading.Event) -> "Callable[[], None]":
+    def _handler(signum: int, _frame: FrameType | None) -> None:
+        sys.stderr.write(f"signal {signum} — stopping...\n")
+        stop_event.set()
+
+    old_int = signal.signal(signal.SIGINT, _handler)
+    old_term = None
+    try:
+        old_term = signal.signal(signal.SIGTERM, _handler)
+    except (ValueError, OSError):
+        pass
+
+    def _restore():
+        try:
+            signal.signal(signal.SIGINT, old_int)
+            if old_term is not None:
+                signal.signal(signal.SIGTERM, old_term)
+        except (ValueError, OSError):
+            pass
+    return _restore
 
 
 def _cmd_daemon(args: argparse.Namespace) -> int:
@@ -391,6 +421,9 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
         quiet=bool(getattr(args, "quiet", False)),
     )
 
+    store = _open_store(args.db)
+    stop = threading.Event()
+
     on_ingest = None
     if cfg.notify_desktop:
         from ozon_parser.notifier import notify_ingest
@@ -399,22 +432,10 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
             notify_ingest(
                 res.get("info") or {},
                 is_new=(res.get("status") == "added"),
+                store_count=store.count(),
             )
         on_ingest = _on_ingest
-
-    store = _open_store(args.db)
-    stop = threading.Event()
-
-    def _handler(signum: int, _frame: FrameType | None) -> None:
-        sys.stderr.write(f"signal {signum} — stopping...\n")
-        stop.set()
-
-    old_int = signal.signal(signal.SIGINT, _handler)
-    old_term = None
-    try:
-        old_term = signal.signal(signal.SIGTERM, _handler)
-    except (ValueError, OSError):
-        pass
+    restore = _setup_signal_handlers(stop)
 
     try:
         run_forever(
@@ -426,12 +447,7 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
             on_ingest=on_ingest,
         )
     finally:
-        try:
-            signal.signal(signal.SIGINT, old_int)
-            if old_term is not None:
-                signal.signal(signal.SIGTERM, old_term)
-        except (ValueError, OSError):
-            pass
+        restore()
         store.close()
     return 0
 
@@ -448,17 +464,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
     store = _open_store(args.db)
     stop = threading.Event()
-
-    def _handler(signum: int, _frame: FrameType | None) -> None:
-        sys.stderr.write(f"signal {signum} — stopping...\n")
-        stop.set()
-
-    old_int = signal.signal(signal.SIGINT, _handler)
-    old_term = None
-    try:
-        old_term = signal.signal(signal.SIGTERM, _handler)
-    except (ValueError, OSError):
-        pass
+    restore = _setup_signal_handlers(stop)
 
     try:
         run_server(
@@ -470,12 +476,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
             config=cfg.to_dict(),
         )
     finally:
-        try:
-            signal.signal(signal.SIGINT, old_int)
-            if old_term is not None:
-                signal.signal(signal.SIGTERM, old_term)
-        except (ValueError, OSError):
-            pass
+        restore()
         store.close()
     return 0
 
@@ -483,7 +484,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 def _cmd_bookmarklet(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
     port = args.port if args.port is not None else cfg.http_port
-    host = args.host if args.host not in ("0.0.0.0", "") else "127.0.0.1"
+    host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
     base = f"http://{host}:{port}"
     js = generate_bookmarklet(base)
     if args.to == "stdout":
@@ -616,7 +617,6 @@ def _cmd_config_show(args: argparse.Namespace) -> int:
     print()
     print("[parse]")
     print(f"include_image_urls = {'true' if cfg.include_image_urls else 'false'}")
-    print(f"min_quality_score = {cfg.min_quality_score}")
     print(f"store_raw_html = {'true' if cfg.store_raw_html else 'false'}")
     print()
     print("[output]")
@@ -658,7 +658,7 @@ def _cmd_reparse(args: argparse.Namespace) -> int:
         f"{result.no_raw} without raw_html, "
         f"{result.failed} failed\n"
     )
-    return 0 if result.reparsed > 0 else 1
+    return 0 if result.failed == 0 else 1
 
 
 def _cmd_export_fixture(args: argparse.Namespace) -> int:
@@ -681,45 +681,38 @@ def _cmd_export_fixture(args: argparse.Namespace) -> int:
     target_dir = Path(args.to)
 
     if has_all:
-        with _open_store(args.db) as s:
-            items = [it for it in s.iter_all() if it.get("raw_html")]
-        if not items:
-            sys.stderr.write(
-                "no items with raw_html — re-copy with store_raw_html=true\n"
-            )
-            return 1
         target_dir.mkdir(parents=True, exist_ok=True)
         count = 0
-        for it in items:
-            sku = it["sku"]
-            copy_type = str(it.get("copy_type") or "unknown")
-            target_file = target_dir / f"{sku}-{copy_type}.html"
-            if target_file.exists() and not args.force:
+        with _open_store(args.db) as s:
+            for it in s.iter_with_raw():
+                sku = it["sku"]
+                copy_type = str(it.get("copy_type") or "unknown")
+                target_file = target_dir / f"{sku}-{copy_type}.html"
+                if target_file.exists() and not args.force:
+                    sys.stderr.write(
+                        f"{target_file} exists — use --force to overwrite\n"
+                    )
+                    continue
+                try:
+                    html_bytes = gzip.decompress(it["raw_html"])
+                except Exception as e:
+                    sys.stderr.write(f"{sku}: gunzip failed: {e}\n")
+                    continue
+                target_file.write_bytes(html_bytes)
                 sys.stderr.write(
-                    f"{target_file} exists — use --force to overwrite\n"
+                    f"exported: {target_file} ({len(html_bytes)} bytes)\n"
                 )
-                continue
-            try:
-                html_bytes = gzip.decompress(it["raw_html"])
-            except Exception as e:
-                sys.stderr.write(f"{sku}: gunzip failed: {e}\n")
-                continue
-            target_file.write_bytes(html_bytes)
-            sys.stderr.write(
-                f"exported: {target_file} ({len(html_bytes)} bytes)\n"
-            )
-            count += 1
+                count += 1
         return 0 if count > 0 else 1
 
     with _open_store(args.db) as s:
         if has_latest:
-            items = [it for it in s.iter_all() if it.get("raw_html")]
-            if not items:
+            row = next(iter(s.iter_with_raw()), None)
+            if row is None:
                 sys.stderr.write(
                     "no items with raw_html — re-copy with store_raw_html=true\n"
                 )
                 return 1
-            row = items[0]
         else:
             row = s.get(args.sku)
     if row is None:

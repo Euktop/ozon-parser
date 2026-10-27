@@ -71,16 +71,13 @@ Chrome и Yandex — `allowed_origins` в manifest host работает в об
 автоматически отправлять HTML при заходе на страницу `/product/...`.
 
 - **Opt-in**: по умолчанию выключено.
+- **Debounce**: отсутствует. Заменён на event-based dedup через `chrome.storage.session` (окно 5 с). `page-fetch` не зависит от загрузки DOM, поэтому таймер не нужен.
 - **Триггеры**: `tabs.onUpdated` + `tabs.onCreated` (`pendingUrl` —
   Ctrl+Click и middle-click, пока вкладка ещё грузится) +
   `webNavigation.onCommitted` (обычная навигация, раньше `onUpdated`) +
   `webNavigation.onHistoryStateUpdated` (SPA-переход листинг → PDP через
   `history.pushState`) + `runtime.onStartup` (session restore: Chrome
   перезапустился с открытыми PDP, навигации не было).
-- **Дебаунс 3 с** — SPA-навигация Ozon дёргает `tabs.onUpdated`
-  несколько раз, дебаунс ждёт «успокоения».
-- **Дедуп 60 с** — тот же URL в течение минуты не отправляется повторно.
-  F5 через 10 сек не сработает; F5 через 2 минуты — сработает.
 - **Уведомления (опция)**: галочка «Уведомление после auto-ingest».
   По умолчанию включена. Показывается **только для активной вкладки**:
   если ты в другой вкладке, badge обновится без уведомления.
@@ -94,7 +91,7 @@ Chrome и Yandex — `allowed_origins` в manifest host работает в об
 
 ## Ограничения (MVP)
 
-- Только Chromium-браузеры (Chrome, Edge, Brave, Arc). Firefox MV3 отличается.
+- Только Chromium-браузеры (Chrome, Edge, Yandex, Brave, Chromium, Vivaldi). Firefox MV3 отличается.
 - Требуется `chrome.scripting` (MV3, Chrome 95+) и `tabs` permission.
 - `world: "MAIN"` fetch может 403'нуться на особо злых WAF-настройках —
   тогда срабатывает rendered fallback. Источник виден в нотификации:

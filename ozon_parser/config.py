@@ -12,7 +12,7 @@ $XDG_CONFIG_HOME/ozon-parser/config.toml (Linux).
 
     [parse]
     include_image_urls = false  # default для once / daemon --include-images
-    min_quality_score = 4       # warning-порог (пока только читается)
+    store_raw_html = true       # хранить ли gzip(raw_html) в БД
 
     [output]
     default_format = "markdown" # default для flush --format
@@ -54,7 +54,6 @@ poll_interval_ms = 200
 
 [parse]
 include_image_urls = false
-min_quality_score = 4
 store_raw_html = true
 
 [output]
@@ -71,7 +70,6 @@ class Config:
     http_port: int = 8765
     poll_interval_ms: int = 200
     include_image_urls: bool = False
-    min_quality_score: int = 4
     store_raw_html: bool = True
     default_format: str = "markdown"
     default_target: str = "stdout"
@@ -175,9 +173,6 @@ def load_config(path: Path | str | None = None) -> Config:
     if isinstance(parse_sec, dict):
         cfg.include_image_urls = _coerce_bool(
             parse_sec.get("include_image_urls"), cfg.include_image_urls
-        )
-        cfg.min_quality_score = _coerce_int(
-            parse_sec.get("min_quality_score"), cfg.min_quality_score
         )
         cfg.store_raw_html = _coerce_bool(
             parse_sec.get("store_raw_html"), cfg.store_raw_html

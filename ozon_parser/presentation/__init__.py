@@ -1,8 +1,9 @@
 """Presentation layer: транспорты (inbound adapters).
 
-- cli.py         — argparse, stdin/stdout
 - native_host.py — Chrome Native Messaging (stdio + 4-byte framing)
-- server.py      — HTTP (опциональный транспорт для bookmarklet/Web UI)
+
+Примечание: `cli.py`, `daemon.py`, `server.py` пока лежат в корне
+пакета (исторически), но по смыслу тоже относятся к presentation.
 
 Каждый транспорт — тонкий адаптер: маршрутизация в application use cases
 и сериализация результата. Никакой бизнес-логики здесь нет.

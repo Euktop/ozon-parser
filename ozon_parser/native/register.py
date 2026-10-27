@@ -142,16 +142,16 @@ def default_host_path() -> Path:
     """
     if getattr(sys, "frozen", False):
         # PyInstaller: sys.executable — это тот .exe, который запущен.
-        # Если запущен ozon-parser.exe (CLI) — рядом лежит ozon-parser-native.exe.
-        # Native Messaging host — именно native; CLI stdout-парсер сломается.
+        # Native Messaging host — именно ozon-parser-native.exe; CLI
+        # ozon-parser.exe со stdout-парсером сломает протокол.
         exe = Path(sys.executable)
         if sys.platform == "win32":
             sibling = exe.with_name("ozon-parser-native.exe")
         else:
             sibling = exe.with_name("ozon-parser-native")
-        if sibling.exists():
-            return sibling
-        return exe
+        # Возвращаем sibling всегда: если файла нет, _cmd_native_register
+        # выведет понятное «host not found» вместо тихой регистрации CLI.
+        return sibling
     if sys.platform == "win32":
         base = Path(
             os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")

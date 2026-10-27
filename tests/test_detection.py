@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from ozon_parser.detection import (
+from ozon_parser.domain.detection import (
     detect_copy_type,
     is_usable_ozon_copy,
     looks_like_ozon_product_page,

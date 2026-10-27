@@ -38,30 +38,38 @@
     │   └── notifier.py         # DesktopNotifier
     │
     ├── presentation/           # слой 4: драйверы
-    │   ├── cli.py              # argparse, подкоманды
-    │   ├── daemon.py           # опрос клипборда
-    │   ├── server.py           # HTTP API
-    │   └── render.py           # render_collection (md / jsonl / csv), per-sku
+    │   └── native_host.py      # stdio-цикл (Chrome Native Messaging)
+    ├── cli.py                  # argparse, подкоманды
+    ├── daemon.py               # опрос клипборда
+    ├── server.py               # HTTP API
+    ├── render.py               # render_collection (md / jsonl / csv), per-sku
     │
     ├── bookmarklet.py          # генератор JS-закладки
+    ├── dev.py                  # dev-режим (register/serve)
     ├── config.py               # TOML-конфиг (APPDATA / XDG_CONFIG)
     ├── parser.py               # collect_product, parse_product, render_markdown
     ├── store.py                # SQLite upsert/list/get/delete/iter_all/iter_with_raw
     ├── notifier.py             # desktop toast (win/mac/linux)
     ├── logging_utils.py        # setup_logging / default_log_path
     ├── service.py              # автозапуск (Startup/launchd/systemd)
-    └── clipboard/
-        ├── __init__.py         # get_backend()
-        ├── base.py
-        ├── win.py              # pywin32
-        ├── mac.py              # pbpaste + osascript
-        └── linux.py            # wl-paste / xclip / xsel
+    ├── clipboard/
+    │   ├── __init__.py         # get_backend()
+    │   ├── base.py
+    │   ├── win.py              # pywin32
+    │   ├── mac.py              # pbpaste + osascript
+    │   └── linux.py            # wl-paste / xclip / xsel
+    └── native/
+        ├── _extension_id.py    # стабильный ID расширения
+        ├── manifest.py         # com.ozon_parser.json
+        └── register.py         # регистрация в Chromium-браузерах
 
     Правило зависимостей (проверяется tests/test_architecture.py):
     domain → stdlib only
     application → domain
-    infrastructure → domain + application + (на время миграции) top-level
-    presentation → application (+ domain для типов)
+    infrastructure → domain + application
+    presentation → application (+ domain для типов) +
+                   infrastructure как composition root
+                   (OzonHtmlParser инжектится в use case)
 
 ## Roadmap
 
@@ -82,7 +90,7 @@
 - [x] Расширение (Manifest V3) — P1.3
   - [x] Auto-ingest (opt-in, tabs.onUpdated, дебаунс 3s, дедуп 60s) — P1.3b
   - [x] Notify после auto-ingest (опция, только для активной вкладки) — P1.3c
-- [ ] Событийный листенер клипборда (AddClipboardFormatListener / changeCount / xclip -l 1)
+- [x] ~~Событийный листенер клипборда~~ — не планируется: daemon polling с `poll_interval_ms=200` достаточен, а платформенные API (Win32 hook, NSPasteboard changeCount, xclip -l 1) добавляют 3 независимых кодовых пути ради экономии 200мс на редком событии «пользователь скопировал PDP».
 - [x] `config.py` — TOML-конфиг (P1.3)
 - [x] `read` — диагностика клипборда (P1.4)
 
@@ -108,7 +116,7 @@
       `DesktopNotifier` (адаптеры портов)
 - [x] `presentation/` — `cli`, `daemon`, `server` зовут use case вместо
       дублирования parse+quality+upsert
-- [x] 7 архитектурных тестов (`test_architecture.py`) — правило
+- [x] 6 архитектурных тестов (`test_architecture.py`) — правило
       зависимостей через AST, ноль внешних зависимостей
 - [x] B1–B9 + S1–S2 закрыты, 23 регрессионных теста
 - [x] B10 (`allow_reuse_address=False` на Windows) — второй `serve` на
@@ -127,23 +135,39 @@
 - [x] `cli.py native register/unregister --extension-id` — ручная регистрация
 - [x] Extension: `nativeCall` → HTTP fallback; popup через `sendMessage`
 - [x] PyInstaller: `ozon-parser.exe` + `ozon-parser-native.exe`
-- [x] Inno Setup: `ozon-parser-setup.exe` с wizard'ом extension ID
-- [x] **339 passed**
+- [x] Inno Setup: `ozon-parser-setup.exe` без wizard'а (ID захардкожен, 3 шага в браузере)
+- [x] **344 passed**
+
+### P5 — Production build & performance (0.6.0)
+
+- [x] `native_host.py`: frozen build detection — `ProcessPoolExecutor`
+      отключён в PyInstaller onefile (spawn 6 копий `.exe` распаковывал
+      архив заново, ~10 с на первый ingest). В frozen — `ThreadPoolExecutor`;
+      `lxml` отпускает GIL на C-парсинге. В dev — полный ProcessPool.
+- [x] `threading.Semaphore(thread_workers * 2)` — backpressure в `native_host`
+      (защита от OOM при bulk-ingest на 100+ URL).
+- [x] `domain/ports.py`: `ParseFunc` — DI для `parse_func` в use case
+      (`IngestHtmlUseCase(parser=None, parse_func=...)`).
+- [x] `LOG.warning` → `LOG.info` для стартового сообщения о параллелизме.
 
 ## CLI
 
-    ozon-parser daemon [--foreground] [--port 8765]
+    ozon-parser daemon [--interval SEC] [--include-images] [--log-file PATH] [--quiet]
     ozon-parser once                 # один раз из клипборда (legacy --once)
     ozon-parser read                 # диагностика клипборда (legacy --read)
     ozon-parser list                 # список SKU в коллекции
     ozon-parser show SKU             # один товар в stdout
     ozon-parser flush [--to stdout|clipboard|FILE|DIR]
-                       [--format md|jsonl|csv]
+                       [--format markdown|jsonl|csv]
                        [--since DATE] [--only SKU[,SKU]]
     ozon-parser reparse [--since DATE]
     ozon-parser rm SKU [SKU ...] [--yes]   # удалить один/несколько SKU
     ozon-parser clear [--yes]
     ozon-parser config edit|show
+    ozon-parser bookmarklet [--host HOST] [--port PORT] [--to stdout|clipboard|FILE]
+    ozon-parser service install|uninstall|status [--mode serve|daemon]
+    ozon-parser native register|unregister [--extension-id ID]
+    ozon-parser dev register|serve
 
 ## Схема SQLite
 
@@ -165,6 +189,7 @@
         updated_at  TEXT
     );
     CREATE INDEX items_created ON items(created_at DESC);
+    CREATE INDEX items_updated ON items(updated_at DESC);
 
 ## HTTP API (для расширения и bookmarklet)
 
@@ -197,20 +222,14 @@ Bookmarklet работает в page-origin ozon.ru. Extension обходит CO
 ## Соглашения
 
 - **`argparse` и `%`.** Help-строки в `argparse` форматируются через `%`-оператор. Любой литеральный `%` в `help=` (например, `%LOCALAPPDATA%`) валит `argparse` с `ValueError: badly formed help string`. Экранируйте как `%%` или пишите без `%`.
-- **`raw_html` — только в БД.** Сырой HTML хранится в `items.raw_html` (bytes | NULL) и не должен попадать в `flush` (markdown / jsonl / csv). Фильтруется в `render._jsonable` по имени ключа, а не по типу.
+- **`raw_html` — только в БД.** Сырой HTML хранится в `items.raw_html` (bytes | NULL) и не должен попадать в `flush` (markdown / jsonl / csv). Фильтруется в `render._prepare_item` по имени ключа, а не по типу.
 - **`Store` — thread-safe.** `ThreadingHTTPServer` использует новый поток на каждый HTTP-запрос, а `Store` один. `sqlite3.connect(..., check_same_thread=False)` + `threading.RLock` вокруг операций + `PRAGMA busy_timeout = 5000`. Без этого handler падает с `ProgrammingError: SQLite objects created in a thread can only be used in that same thread`, и клиент получает `RemoteDisconnected`. `iter_all()` материализует `fetchall()` под локом, а не отдаёт курсор наружу. Регрессия: `test_store_is_thread_safe`.
 - **`_clean_desc_node` — без мутации soup.** Legacy использовал `copy(section)` (shallow), который шарил `contents` с оригиналом: `decompose()` на дочернем узле удалял его и из `soup`. Сейчас пересобираем дерево через `BeautifulSoup(str(section), 'html.parser')`. Есть регрессионный тест `test_clean_desc_node_does_not_mutate_soup`.
-- **Docstrings и `\`.** Обычная строка `"""…"""` интерпретирует escape-последовательности: `\d` в тексте docstring даёт `SyntaxWarning` (Python 3.12+) и станет `SyntaxError` в будущем. Если в docstring есть backslash (regex, windows-пути) — делайте её raw: `r"""…"""`. Регрессионный тест: `test_parser_module_has_no_invalid_escape_sequences`.
+- **Docstrings и `\`.** Обычная строка `"""…"""` интерпретирует escape-последовательности: `\d` в тексте docstring даёт `SyntaxWarning` (Python 3.12+) и станет `SyntaxError` в будущем. Если в docstring есть backslash (regex, windows-пути) — делайте её raw: `r"""…"""`. Регрессионный тест: `test_no_invalid_escape_sequences`.
 - **`daemon.py`: дедуп только «подряд».** Хэш сравнивается с последним обработанным poll'ом. Если между двумя копиями одного PDP в буфер попадало что-то ещё — PDP переобработается и обновит запись. Это правильно: цена/наличие могли измениться.
 - **`daemon.py` не затирает буфер.** В отличие от legacy, после разбора буфер обмена не трогается. Копирование в буфер — только явно через `flush --to clipboard`.
-- **`extract_nuxt_state` не портирован.** Legacy парсил мегабайты JSON, результат шёл только в неиспользуемый `source_has_nuxt`. Оставлена строковая проверка. Если понадобится — вернём в `extractors/nuxt.py`.
+- **`extract_nuxt_state` не портирован.** Legacy парсил мегабайты JSON, результат шёл только в неиспользуемый `source_has_nuxt`. Оставлена строковая проверка. Если понадобится — вернём отдельным модулем.
 - **Версионно-зависимые CSS-классы Ozon.** `.b5_7_10-a4` (v10 ui-kit-badge), `ol.ce8_7` (breadcrumbs) и т.п. меняются между релизами Ozon. В `extract_marketing_labels_dom` используем regex `^b5_7_\d+-a4$`. Для breadcrumbs — fallback помечен комментарием.
 - **`id="section-characteristics"` — не всегда в DOM.** На некоторых PDP характеристики приходят только через `webShortCharacteristics` (client-state JSON), без DOM-секции. `collect_product` сначала пробует `extract_full_characteristics_dom` (`#section-characteristics`), при пустом результате падает на `webShortCharacteristics`. Регрессионный тест на реальном source.html не должен требовать наличия `#section-characteristics` — он проверяет отсутствие мутации soup (`str(soup)` до/после идентичен).
 - **CF_HTML при Ctrl+U-копии.** Chrome при `Ctrl+U → Ctrl+A → Ctrl+C` кладёт source HTML в **plain-text** (CF_UNICODETEXT). CF_HTML-формат содержит `<table>` с экранированным текстом `<pre>`-выделения — **это не сырой документ**, а фрагмент. `detect_copy_type(html)` вернёт `unknown` — норма, а не баг. `collect_candidates` фильтрует такой html через `is_usable_ozon_copy`, парсер берёт source из plain-text. `ozon-parser read` показывает это наглядно (`text.detect_copy_type: source`, `html.detect_copy_type: unknown` + `html.note: CF_HTML fragment`).
 - **Extension: fetch из SW → 403.** Ozon WAF режет `fetch(tab.url)` из service worker'а — это XHR-like запрос (`Sec-Fetch-Dest: empty`), а не навигация. Решение: `chrome.scripting.executeScript({world: "MAIN"})` — page-context fetch с заголовками страницы; fallback — `document.documentElement.outerHTML` (rendered DOM, без сети). Парсер обрабатывает rendered с тем же quality 9/9. В нотификации виден метод: `(page-fetch)` = source, `(rendered-dom)` = rendered.
-
-## Миграция с legacy
-
-Оригинальный `ozon_clip.py` (v7) — монолит. Логика парсинга переносится в `parser.py` и `extractors/` **без изменений**, чтобы поведение сохранилось. Ломается только одно: `run()` больше не пишет в клипборд автоматически — вместо этого вызывает `store.upsert()`.
-
-Оригинал полезно сохранить в `legacy/ozon_clip.py` (не коммитится в пакет, только как reference).

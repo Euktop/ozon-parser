@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import socket
 import subprocess
 import sys
 import urllib.error
@@ -126,13 +125,12 @@ def test_install_linux_fails_on_systemctl(
     )
     monkeypatch.setattr(sys, "platform", "linux")
     res = S.install("serve")
-    # Наш mock срабатывает по ключу "systemctl --user", но enable — 4-й вызов
-    # просто проверим, что unit всё равно создан, а ответ может быть ok
-    # (в реальности enable до unit-fail не доходит, но mock грубый).
-    # Главное — install не бросает и unit существует.
+    # unit создан, но systemctl enable упал с returncode=1
     unit = _fake_home / ".config" / "systemd" / "user" / "ozon-parser-serve.service"
     assert unit.exists()
     assert isinstance(res, S.InstallResult)
+    assert res.ok is False
+    assert "systemctl enable failed" in res.message
 
 
 def test_uninstall_linux_removes_unit(

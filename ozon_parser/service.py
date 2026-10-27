@@ -85,8 +85,16 @@ def _python_and_args(
     interval: float | None,
     log_file: Path | str | None = None,
 ) -> list[str]:
-    """Команда запуска сервиса: python -m ozon_parser <mode> [флаги]."""
-    args: list[str] = [sys.executable, "-m", "ozon_parser", mode]
+    """Команда запуска сервиса.
+
+    В dev-режиме: ``<python> -m ozon_parser <mode>``.
+    В frozen (PyInstaller): ``<ozon-parser.exe> <mode>`` — нельзя передавать
+    ``-m ozon_parser`` уже собранному exe, он это не поймёт.
+    """
+    if getattr(sys, "frozen", False):
+        args: list[str] = [sys.executable, mode]
+    else:
+        args = [sys.executable, "-m", "ozon_parser", mode]
     if mode == "serve":
         if port is not None:
             args.extend(["--port", str(int(port))])
@@ -99,10 +107,10 @@ def _python_and_args(
     return args
 
 
-def _run(cmd: list[str], *, check: bool = False) -> subprocess.CompletedProcess:
+def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     LOG.debug("run: %s", cmd)
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, check=check)
+        return subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError as e:
         LOG.warning("command not found: %s (%s)", cmd[0], e)
         return subprocess.CompletedProcess(cmd, 127, stdout="", stderr=str(e))

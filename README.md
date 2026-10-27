@@ -19,12 +19,25 @@
 
 ## Статус
 
-**<!-- AUTO:VERSION -->0.5.1<!-- /AUTO -->**. Все P0–P4 из `ARCHITECTURE.md` закрыты.
+**<!-- AUTO:VERSION -->0.6.0<!-- /AUTO -->**. Закрыты P0–P5.
 Архитектура — 4 слоя CA: `domain` / `application` / `infrastructure` /
-`presentation`. **330+ автотестов**, включая 7 архитектурных (правило
-зависимостей) и регрессии на 10 багов.
+`presentation`. **Автотесты: см. `pytest --collect-only -q | tail -1`**
+(включая 6 архитектурных: правило
+зависимостей) и регрессии на 12 багов.
 
-Что нового в 0.4.0:
+Что нового в 0.6.0:
+
+- **Frozen build fix**: `ozon-parser-native.exe` (PyInstaller onefile)
+  больше не spawn'ит 6 копий `.exe` на первый ingest — в frozen используется
+  только `ThreadPoolExecutor` (`lxml` отпускает GIL на C-парсинге).
+  Первый ingest в UI: **~300 мс**, не 10 с. В dev — полный ProcessPool.
+- **Backpressure**: `threading.Semaphore(thread_workers * 2)` в
+  `native_host.py` — при bulk-ingest на 100+ URL in-flight очередь
+  не растёт в память.
+- `IngestHtmlUseCase` принимает `parser=None` + `parse_func` — DI без
+  обязательного `HtmlParser`.
+
+Что нового в 0.4.0 (историческая справка):
 
 - **Native Messaging** — расширение запускает Python-ядро через stdio
   (Chrome сам поднимает host-процесс), без фонового `serve` и без порта
@@ -61,10 +74,15 @@
 ### Dev / macOS / Linux
 
     python -m venv .venv
-    .venv\Scripts\activate          # Windows
+    # Windows: .venv\Scripts\activate
+    # macOS/Linux: source .venv/bin/activate
     pip install -e .[dev]
-    python build/gen_extension_key.py   # один раз — генерирует RSA key + ID
-    ozon-parser native register          # ID берётся из _extension_id.py
+    ozon-parser native register
+
+> **Внимание:** `build/gen_extension_key.py` запускать **не нужно**.
+> ID уже захардкожен в `_extension_id.py`. Запуск создаст новый ключ
+> и сломает совместимость с существующими установками (только для
+> maintainer'ов, меняющих ID).
 
 ## Запуск
 
@@ -113,7 +131,7 @@
 | Переменная | Назначение |
 |---|---|
 | `OZON_PARSER_CONFIG` | Путь к TOML-конфигу. Переопределяет `%APPDATA%\ozon-parser\config.toml`. |
-| `OZON_PARSER_DB` | (TODO) Путь к SQLite. Пока не реализовано — используйте флаг `--db` в каждой команде или настройте алиас. |
+
 
 ## Автозапуск (фоновый сервис)
 
@@ -202,7 +220,7 @@ Badge на иконке — число товаров.
 |---|---|---|
 | GET | `/health` | `{"ok": true}` |
 | GET | `/config` | `{http_port, default_format, ...}` для extension |
-| POST | `/ingest?url=...` | body = HTML, parse + upsert |
+| POST | `/ingest?url=...` | body = HTML, `?url=` (опционально) |
 | GET | `/items` | список SKU |
 | GET | `/items/{sku}` | Markdown одного товара |
 | POST | `/flush` | `{format}`, `only?` → `text/plain` |
@@ -210,6 +228,12 @@ Badge на иконке — число товаров.
 | OPTIONS | `*` | CORS preflight |
 
 `POST /flush` отвечает **только** `text/plain` (формат из `format`).
+
+> Актуальная версия — <!-- AUTO:VERSION -->0.6.0<!-- /AUTO -->. Что нового в 0.6.x:
+> fast bulk mode (fetch-based, ~60-80 мс/URL), капча-хендлер, `DELETE /items`,
+> `dev register/serve` для hot-reload, persistent native port,
+> frozen build без ProcessPool (первый ingest ~300 мс вместо ~10 с).
+
 Запись файла на диск сервера (`to:file`) и управление буфером сервера
 (`to:clipboard`) в HTTP **убраны** — это CLI-операции
 (`ozon-parser flush -t FILE`). Extension получает текст в ответе и

@@ -5,4 +5,5 @@ infrastructure (SQLite, bs4) и presentation (CLI, server) — проверяе�
 tests/test_architecture.py.
 
 - ingest: IngestHtmlUseCase — HTML → parse → quality → SKU → upsert → notify.
+- reparse: ReparseUseCase — raw_html → parse → upsert (2-фазный streaming).
 """

@@ -18,13 +18,13 @@ import gzip
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from ozon_parser.domain.detection import (
     detect_copy_type,
     is_usable_ozon_copy,
 )
-from ozon_parser.domain.ports import HtmlParser, Notifier, ProductRepository
+from ozon_parser.domain.ports import HtmlParser, Notifier, ProductRepository, ParseFunc
 from ozon_parser.domain.quality import quality_score
 
 LOG = logging.getLogger("ozon_parser.application.ingest")
@@ -101,12 +101,12 @@ class IngestHtmlUseCase:
     def __init__(
         self,
         *,
-        parser: HtmlParser,
+        parser: HtmlParser | None,
         repository: ProductRepository,
         store_raw_html: bool = True,
         include_images: bool = False,
         notifier: Notifier | None = None,
-        parse_func: Callable[[str, bool], tuple[str, dict[str, Any]]] | None = None,
+        parse_func: ParseFunc | None = None,
     ) -> None:
         self._parser = parser
         self._repo = repository
@@ -130,10 +130,12 @@ class IngestHtmlUseCase:
         try:
             if self._parse_func is not None:
                 md, info = self._parse_func(html, self._include_images)
-            else:
+            elif self._parser is not None:
                 md, info = self._parser.parse(
                     html, include_images=self._include_images
                 )
+            else:
+                raise ValueError("Either parser or parse_func must be provided")
         except Exception as e:
             LOG.exception("parse_product failed: %s", e)
             return IngestResult(

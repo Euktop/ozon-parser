@@ -271,7 +271,7 @@ def test_real_source_clean_desc_node_safe() -> None:
     Legacy `_clean_desc_node` использовал `copy(section)` (shallow), который
     шарил `contents` с оригиналом: `decompose()` на дочернем узле удалял его
     и из `soup`. Современная реализация пересобирает дерево через
-    `BeautifulSoup(str(section), 'html.parser')` — оригинал не трогается.
+    `BeautifulSoup(str(section), _BS_PARSER)` — оригинал не трогается.
 
     Синтетическая регрессия уже есть: `test_clean_desc_node_does_not_mutate_soup`
     (вкладывает `#section-characteristics` внутрь `#section-description`).
@@ -283,6 +283,6 @@ def test_real_source_clean_desc_node_safe() -> None:
     html = _load(SOURCE)
     soup = BeautifulSoup(html, "html.parser")
     before = str(soup)
-    _ = collect_product(soup, html)
+    _ = collect_product(soup)
     after = str(soup)
     assert before == after, "collect_product mutated the original soup"

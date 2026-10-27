@@ -9,7 +9,9 @@ Protocol, а не abc.ABC: structural subtyping позволяет FakeRepo в �
 """
 from __future__ import annotations
 
-from typing import Any, Iterator, Protocol
+from typing import Any, Callable, Iterator, Protocol
+
+ParseFunc = Callable[[str, bool], tuple[str, dict[str, Any]]]
 
 
 class HtmlParser(Protocol):

@@ -43,10 +43,9 @@ def _powershell(title: str, message: str) -> None:
     m = str(message).replace("'", "''").replace("\n", " ")
     # str.replace, а не str.format: title/body с фигурными скобками
     # (например, «Набор {5 шт}») раньше валили .format() с KeyError.
+    # Это осознанный workaround — не менять на .format()!
     script = _PS_SCRIPT_TEMPLATE.replace("{title}", t).replace("{body}", m)
-    flags = 0
-    if sys.platform == "win32":
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     subprocess.Popen(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
         stdout=subprocess.DEVNULL,

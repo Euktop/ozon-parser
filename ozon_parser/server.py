@@ -6,13 +6,10 @@
     POST   /ingest?url=...      → body = HTML, parse + upsert
     GET    /items               → [{sku, title, quality, updated_at}, ...]
     GET    /items/{sku}         → markdown (text/plain) или 404
-    POST   /flush               → {"format": "markdown|jsonl|csv",
-                                    "to": "response|stdout|clipboard|file",
-                                    "path": "..."}
+    POST   /flush               → {"format": "markdown|jsonl|csv"}
     DELETE /items/{sku}         → {"deleted": true|false}
 
-Bind на 127.0.0.1 по умолчанию. CORS открыт для localhost-страниц
-(bookmarklet на ozon.ru должен уметь POST сюда).
+Bind на 127.0.0.1 по умолчанию. CORS открыт только для https://www.ozon.ru.
 
 Сервер спроектирован так, чтобы его можно было запустить в фоновом
 потоке и остановить через stop_event (нужно для тестов).
@@ -28,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from ozon_parser import __version__
 from ozon_parser.application.ingest import IngestHtmlUseCase
 from ozon_parser.infrastructure.parsing.ozon import OzonHtmlParser
 from ozon_parser.render import render_collection
@@ -65,11 +63,11 @@ class Handler(BaseHTTPRequestHandler):
     store: Store
     store_raw_html: bool = True
     config: dict | None = None
-    server_version = "ozon-parser/0.5.1"
+    server_version = f"ozon-parser/{__version__}"
 
     def _public_config(self) -> dict:
         """Публичный config для discovery."""
-        return dict(self.config or {})
+        return self.config or {}
 
     # ----- helpers -----
 
@@ -161,7 +159,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             raw = self._read_body()
         except ValueError as e:
-            return self._send_json(413, {"status": "error", "error": str(e)})
+            status = 413 if "too large" in str(e) else 400
+            return self._send_json(status, {"status": "error", "error": str(e)})
         try:
             html = raw.decode("utf-8")
         except UnicodeDecodeError:

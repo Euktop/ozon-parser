@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ozon_parser.quality import quality_score
+from ozon_parser.domain.quality import quality_score
 
 
 def test_empty() -> None:

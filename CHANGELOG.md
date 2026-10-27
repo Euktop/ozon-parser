@@ -16,6 +16,34 @@
 
 - 
 
+## [0.6.0] — 2026-10-27
+
+### Исправлено (frozen build)
+
+- `native_host.py`: в **frozen** (PyInstaller onefile) сборке отключён
+  `ProcessPoolExecutor`. Spawn 6 копий `.exe` на Windows распаковывал
+  архив заново при каждом старте — первый ingest занимал ~10 с. В frozen
+  используется только `ThreadPoolExecutor`; `lxml` отпускает GIL на
+  C-парсинге, этого достаточно. В dev-режиме (`python -m ...`) — полный
+  ProcessPool, как раньше.
+
+### Добавлено
+
+- `native_host.py`: `threading.Semaphore(thread_workers * 2)` — **backpressure**.
+  Без него при bulk-ingest на 100+ URL очередь in-flight задач растёт в
+  память быстрее, чем `parse_product` успевает обрабатывать.
+- `domain/ports.py`: `ParseFunc = Callable[[str, bool], tuple[str, dict]]` —
+  тип для инъекции парсера в use case.
+- `application/ingest.py`: `IngestHtmlUseCase` принимает `parser=None` +
+  `parse_func` — DI без обязательного `HtmlParser`. `ValueError` если
+  ни один не передан.
+
+### Изменено
+
+- `native_host.py`: `LOG.warning` → `LOG.info` для стартового сообщения
+  о параллелизме (frozen / dev). WARNING в stderr native host'а попадал в
+  `chrome_debug.log` Chrome'а и засорял его на каждом старте.
+
 ## [0.5.1] — 2026-10-27
 
 ### Быстрый режим bulk-ingest (fetch + fallback + капча)
@@ -31,7 +59,12 @@
 - `bulk.html`: checkbox «Быстрый режим» (вкл. по умолчанию). Статус
   «⚠️ Ждём прохождения капчи» в UI.
 
-### Ускорено (parallel ingest)
+### Ускорено (parallel ingest — dev only)
+
+> **Важно (см. 0.6.0):** в **frozen** сборке `ProcessPoolExecutor` отключён —
+> spawn 6 копий `.exe` распаковывал архив заново на каждом старте (~10 с на
+> первый ingest). Здесь описано поведение **dev-режима**
+> (`python -m ozon_parser.presentation.native_host`).
 
 - `native_host.py`: параллельная обработка входящих сообщений.
   ThreadPoolExecutor (I/O: JSON, SQLite, gzip) + ProcessPoolExecutor
@@ -44,18 +77,6 @@
   поведение (`self._parser.parse`).
 - `NATIVE_TIMEOUT_MS` в extension: 5000 → 10000 мс (первый ingest
   после старта host'а включает spawn процессов ~1-2 с).
-
-### Добавлено
-
-- 
-
-### Изменено
-
-- 
-
-### Исправлено
-
-- 
 
 ## [0.5.0] — 2026-10-27
 
@@ -92,53 +113,6 @@
   (popup сам зовёт `chrome.action.setBadgeText` в `renderList`).
 - В popup видно `copy_type` (`source` / `rendered`) — сразу ясно, полные
   ли данные (rendered на фоновой вкладке теряет user_media).
-
-
-## [0.5.0] — 2026-10-27
-
-### Ускорение (persistent native port)
-
-- `extension/background.js`: `connectNative` держится между вызовами
-  (id-based matching) вместо `connectNative+disconnect` на каждый
-  запрос. Убирает spawn PyInstaller `.exe` (~1.5–2 с) с каждого
-  ingest — главный источник задержки 2–3 с.
-- `notifyResult` больше не ждёт `GET /items`: badge обновляется
-  оптимистично (+1 при `added`), фоновое выравнивание через 2 с.
-
-### Auto-ingest расширен
-
-- `manifest.json`: permission `webNavigation`.
-- `webNavigation.onCommitted` + `onHistoryStateUpdated` — SPA-переходы
-  Ozon (листинг → PDP) и ранний триггер до `onUpdated`.
-- `tabs.onCreated` с `pendingUrl` — Ctrl+Click / middle-click, пока
-  вкладка ещё грузится.
-- `runtime.onStartup` + `tabs.query` — session restore (Chrome
-  перезапустился с открытыми PDP).
-- Popup: кнопка «Все вкладки» — bulk ingest всех открытых PDP.
-
-### Extension: прочее
-
-- Popup «Очистить всё» → один вызов `items.clear` (native)
-  / `DELETE /items` (HTTP) вместо N × `items.delete`.
-- Options: «Reload extension + native» и checkbox «Dev mode» —
-  перезапуск без пересборки при правке Python-кода.
-
-### Добавлено
-
-- `DELETE /items` (без SKU) — очистка всей коллекции одним вызовом.
-  Popup «Очистить всё» теперь делает один запрос, а не N × DELETE.
-- Native Messaging action `items.clear` — bulk clear для extension.
-- `ozon-parser dev register` — регистрация host как wrapper (.bat/.sh)
-  с чек-листом; отказывается работать из frozen .exe.
-- `ozon-parser dev serve` — HTTP-сервер с автоперезапуском при правке
-  `.py` (через `watchfiles`, новая dev-зависимость).
-
-### Изменено
-
-- `parser.py`: `lxml` вместо `html.parser` — парсинг PDP в 3–5 раз
-  быстрее на больших страницах. Fallback на `html.parser`, если
-  `lxml` недоступен. `lxml` добавлен в основные зависимости.
-
 
 ## [0.4.0] — 2026-10-21
 
@@ -198,7 +172,7 @@
 
 - Токен-аутентификация HTTP API (была по умолчанию).
 
-## [0.2.0] — 2026-XX-XX
+## [0.2.0] — TBD
 
 ### Добавлено
 
@@ -208,7 +182,7 @@
 - `reparse` — перепарсинг `raw_html` из БД.
 - `export-fixture` — выгрузка `raw_html` для регрессионных тестов.
 
-## [0.1.0] — 2026-XX-XX
+## [0.1.0] — TBD
 
 Первый рабочий релиз: CLI (`once`/`daemon`/`list`/`flush`/`clear`), SQLite,
 парсер source/rendered.

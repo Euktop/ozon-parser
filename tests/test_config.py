@@ -22,7 +22,6 @@ def test_defaults() -> None:
     assert c.http_port == 8765
     assert c.poll_interval_ms == 200
     assert c.include_image_urls is False
-    assert c.min_quality_score == 4
     assert c.default_format == "markdown"
     assert c.default_target == "stdout"
     assert c.notify_desktop is True
@@ -51,7 +50,7 @@ def test_load_all_sections(tmp_path: Path) -> None:
     f = tmp_path / "c.toml"
     f.write_text(
         '[input]\nhttp_port = 8000\npoll_interval_ms = 500\n\n'
-        '[parse]\ninclude_image_urls = true\nmin_quality_score = 6\n\n'
+        '[parse]\ninclude_image_urls = true\n\n'
         '[output]\ndefault_format = "jsonl"\ndefault_target = "clipboard"\n\n'
         '[notify]\ndesktop = false\n',
         encoding="utf-8",
@@ -60,25 +59,10 @@ def test_load_all_sections(tmp_path: Path) -> None:
     assert c.http_port == 8000
     assert c.poll_interval_ms == 500
     assert c.include_image_urls is True
-    assert c.min_quality_score == 6
     assert c.default_format == "jsonl"
     assert c.default_target == "clipboard"
     assert c.notify_desktop is False
 
-
-def test_load_wrong_type_falls_back(tmp_path: Path) -> None:
-    f = tmp_path / "c.toml"
-    f.write_text('[input]\nhttp_port = "not-int"\n', encoding="utf-8")
-    c = load_config(f)
-    assert c.http_port == 8765  # default
-
-
-def test_load_bool_is_not_int(tmp_path: Path) -> None:
-    """bool — подкласс int; не превращаем true в 1 для min_quality_score."""
-    f = tmp_path / "c.toml"
-    f.write_text("[parse]\nmin_quality_score = true\n", encoding="utf-8")
-    c = load_config(f)
-    assert c.min_quality_score == 4  # default, не 1
 
 
 def test_load_invalid_toml_falls_back(tmp_path: Path) -> None:

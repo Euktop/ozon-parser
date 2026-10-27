@@ -2,7 +2,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 *.egg
-build/
+build/*
+!build/*.py
+!build/*.bat
+!build/*.spec
+!build/*.md
 dist/
 .venv/
 venv/
@@ -26,8 +30,6 @@ tests/fixtures/*.htm
 
 # Extension private key (RSA-2048). Нужен только для Chrome Web Store
 # upload; в git не кладём — при утере ID будет другим (не восстановить).
-build/ozon-parser-extension.pem
-
 # Старый pem в корне (был до build/gen_extension_key.py) — тоже приватный
 extension.pem
 
@@ -39,8 +41,4 @@ installer/Output/
 
 # Локальные артефакты
 out/
-out2/
-x.md
-test.db
-test.db-*
 

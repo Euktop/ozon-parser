@@ -7,9 +7,9 @@ r"""Парсер Ozon PDP: extractors + collect_product + render_markdown.
    с оригиналом — `decompose()` на дочернем узле удалял его и из `soup`.
    Здесь пересобираем дерево через `BeautifulSoup(str(section))`.
 
-2. `extract_nuxt_state` не портирован. Legacy парсил мегабайты JSON,
-   результат шёл только в неиспользуемый флаг `source_has_nuxt`. Оставили
-   дешёвую строковую проверку.
+2. `extract_nuxt_state` не портирован (поле `source_has_nuxt` удалено).
+
+   `_clean_desc_node` пересобирает дерево через `BeautifulSoup(str(section), _BS_PARSER)`.
 
 Единственный экстрактор с версионно-зависимым селектором, который пришлось
 поправить: `extract_marketing_labels_dom`. Legacy искал `.b5_7_3-a4`
@@ -20,10 +20,13 @@ r"""Парсер Ozon PDP: extractors + collect_product + render_markdown.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
 from bs4 import BeautifulSoup, NavigableString, Tag
+
+LOG = logging.getLogger("ozon_parser.parser")
 
 WIDGET_ID_RE = re.compile(r"^state-(.+)-(\d+)-([^-]+)-(\d+)$")
 HASHTAG_RE = re.compile(r"#[\w\-]+")
@@ -111,7 +114,10 @@ def extract_widget_states(soup: BeautifulSoup) -> dict[str, dict]:
             continue
         m = WIDGET_ID_RE.match(id_)
         name = m.group(1) if m else id_
-        out.setdefault(name, {"_id": id_, "data": data})
+        if name in out:
+            LOG.warning("duplicate widget %r on page: %s", name, id_)
+            continue
+        out[name] = {"_id": id_, "data": data}
     return out
 
 
@@ -134,7 +140,7 @@ def _iter_jsonld_products(data: Any):
 def extract_jsonld(soup: BeautifulSoup) -> dict:
     for s in soup.find_all("script", type="application/ld+json"):
         try:
-            data = json.loads(s.string or s.get_text() or "")
+            data = json.loads(s.string or "")
         except Exception:
             continue
         for product in _iter_jsonld_products(data):
@@ -147,9 +153,9 @@ def extract_og(soup: BeautifulSoup) -> dict:
     for m in soup.find_all("meta"):
         k = (m.get("property") or m.get("name") or "").lower()
         v = m.get("content") or ""
-        if k == "og:title":
+        if k == "og:title" and not og["title"]:
             og["title"] = v
-        elif k == "og:description":
+        elif k == "og:description" and not og["description"]:
             og["description"] = v
         elif k == "og:image" and not og["image"]:
             og["image"] = v
@@ -163,18 +169,18 @@ def extract_full_characteristics_dom(soup: BeautifulSoup) -> list[tuple[str, str
     out: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for dl in section.find_all("dl"):
-        dt, dd = dl.find("dt"), dl.find("dd")
-        if not dt or not dd:
-            continue
-        k = clean_key(dt.get_text(" "))
-        v = clean_value(dd.get_text(" "))
-        if not k or not v:
-            continue
-        key_norm = k.lower()
-        if (key_norm, v) in seen:
-            continue
-        seen.add((key_norm, v))
-        out.append((k, v))
+        dts = dl.find_all("dt")
+        dds = dl.find_all("dd")
+        for dt, dd in zip(dts, dds):
+            k = clean_key(dt.get_text(" "))
+            v = clean_value(dd.get_text(" "))
+            if not k or not v:
+                continue
+            key_norm = k.lower()
+            if (key_norm, v) in seen:
+                continue
+            seen.add((key_norm, v))
+            out.append((k, v))
     return out
 
 
@@ -274,14 +280,12 @@ def extract_breadcrumbs_dom(soup: BeautifulSoup) -> list[tuple[str, str]]:
 # ============================================================================
 
 
-def collect_product(soup: BeautifulSoup, html: str) -> dict[str, Any]:
+def collect_product(soup: BeautifulSoup) -> dict[str, Any]:
     widgets = extract_widget_states(soup)
     jsonld = extract_jsonld(soup)
     og = extract_og(soup)
 
     p: dict[str, Any] = {
-        "source_widgets": sorted(widgets.keys()),
-        "source_has_nuxt": "window.__nuxt__.state" in html,
         "title": "",
         "brand": "",
         "sku": "",
@@ -653,6 +657,6 @@ def parse_product(
     html: str, include_images: bool = False
 ) -> tuple[str, dict[str, Any]]:
     soup = BeautifulSoup(html, _BS_PARSER)
-    product = collect_product(soup, html)
+    product = collect_product(soup)
     md = render_markdown(product, include_images=include_images)
     return md, product

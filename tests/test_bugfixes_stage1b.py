@@ -1,12 +1,8 @@
 """Регрессионные тесты на багфиксы Этапа 1, батч 2 (B2, B3, B4, S1).
-
-S2 (constant-time token compare) поведенчески покрыт в test_auth.py —
-отдельного теста нет, timing-attack нестабилен в CI.
 """
 from __future__ import annotations
 
 import http.client
-import logging
 import socket
 import threading
 import time

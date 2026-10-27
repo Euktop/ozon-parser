@@ -8,11 +8,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 import pytest
 
-from ozon_parser.application.ingest import IngestHtmlUseCase, IngestResult
+from ozon_parser.application.ingest import IngestResult
 from ozon_parser.cli import main
 from ozon_parser.daemon import poll_once
 from ozon_parser.store import Store
@@ -68,7 +66,7 @@ def test_poll_once_uses_injected_use_case(tmp_path: Path) -> None:
     spy = SpyUseCase()
     with Store(tmp_path / "c.db") as s:
         res = poll_once(
-            s, text=VALID_HTML, html=None, use_case=spy  # type: ignore[arg-type]
+            s, text=VALID_HTML, html="", use_case=spy  # type: ignore[arg-type]
         )
     assert res["status"] == "added"
     assert res["sku"] == "777777"
@@ -81,7 +79,7 @@ def test_poll_once_uses_injected_use_case(tmp_path: Path) -> None:
 def test_poll_once_default_use_case_writes_to_store(tmp_path: Path) -> None:
     """Без инъекции poll_once создаёт IngestHtmlUseCase и пишет в Store."""
     with Store(tmp_path / "c.db") as s:
-        res = poll_once(s, text=VALID_HTML, html=None)
+        res = poll_once(s, text=VALID_HTML, html="")
         assert res["status"] == "added"
         assert s.count() == 1
         assert s.get("777777") is not None

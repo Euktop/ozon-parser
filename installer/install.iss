@@ -35,9 +35,6 @@ PrivilegesRequired=lowest
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
-[Tasks]
-Name: "autostart"; Description: "Запускать HTTP-сервер при входе в систему (для bookmarklet / Web UI)"; GroupDescription: "Дополнительно:"; Flags: unchecked
-
 [Files]
 Source: "..\dist\ozon-parser.exe";        DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ozon-parser-native.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -47,19 +44,6 @@ Source: "..\dist\ozon-parser-native.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\extension.crx";          DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\extension\*";                 DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-[Registry]
-; ForceList: Chrome/Edge/Yandex/Brave/Chromium/Vivaldi — установят extension
-; при следующем старте. Пишем в HKCU (без админа). uninsdeletevalue — при
-; удалении снимается только наша запись, чужие force-list записи не трогаем.
-; Chrome сверяет подпись .crx с manifest.key — у нас совпадает
-; (build/gen_extension_key.py), поэтому установка проходит.
-Root: HKCU; Subkey: "Software\Google\Chrome\ExtensionInstallForcelist";       ValueType: string; ValueName: "1"; ValueData: "{#ExtensionId};{#ExtensionUpdateUrl}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Microsoft\Edge\ExtensionInstallForcelist";      ValueType: string; ValueName: "1"; ValueData: "{#ExtensionId};{#ExtensionUpdateUrl}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Yandex\YandexBrowser\ExtensionInstallForcelist"; ValueType: string; ValueName: "1"; ValueData: "{#ExtensionId};{#ExtensionUpdateUrl}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\BraveSoftware\Brave-Browser\ExtensionInstallForcelist"; ValueType: string; ValueName: "1"; ValueData: "{#ExtensionId};{#ExtensionUpdateUrl}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Chromium\ExtensionInstallForcelist";            ValueType: string; ValueName: "1"; ValueData: "{#ExtensionId};{#ExtensionUpdateUrl}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Vivaldi\ExtensionInstallForcelist";             ValueType: string; ValueName: "1"; ValueData: "{#ExtensionId};{#ExtensionUpdateUrl}"; Flags: uninsdeletevalue
-
 [Icons]
 Name: "{group}\{#AppName} (CLI)"; Filename: "{cmd}"; Parameters: "/k {app}\ozon-parser.exe --help"; WorkingDir: "{app}"
 Name: "{group}\Удалить {#AppName}"; Filename: "{uninstallexe}"
@@ -68,12 +52,9 @@ Name: "{group}\Удалить {#AppName}"; Filename: "{uninstallexe}"
 ; Регистрация native host. Extension ID берётся из _extension_id.py
 ; (сгенерирован build/gen_extension_key.py). Без wizard — двойной клик и готово.
 Filename: "{app}\ozon-parser.exe"; Parameters: "native register"; Flags: runhidden waituntilterminated; StatusMsg: "Регистрация Native Messaging host..."
-; Опционально — автозапуск serve.
-Filename: "{app}\ozon-parser.exe"; Parameters: "service install --mode serve"; Flags: runhidden waituntilterminated; Tasks: autostart; StatusMsg: "Установка автозапуска..."
 
 [UninstallRun]
 Filename: "{app}\ozon-parser.exe"; Parameters: "native unregister"; Flags: runhidden waituntilterminated; RunOnceId: "NativeUnregister"
-Filename: "{app}\ozon-parser.exe"; Parameters: "service uninstall --mode serve"; Flags: runhidden waituntilterminated; RunOnceId: "ServiceUninstall"
 
 ; Extension ID захардкожен в ozon_parser/native/_extension_id.py
 ; (генерируется build/gen_extension_key.py). Installer вызывает
@@ -82,16 +63,29 @@ Filename: "{app}\ozon-parser.exe"; Parameters: "service uninstall --mode serve";
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ErrorCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
+    // Открываем проводник с папкой расширения
+    ShellExec('open', 'explorer.exe', ExpandConstant('{app}\extension'), '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+
+    // Пытаемся открыть страницу расширений в браузере по умолчанию
+    ShellExec('open', 'chrome://extensions', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+
+    // Показываем финальную инструкцию (без привязки к Chrome)
     MsgBox(
-      'Готово!' + #13#10 + #13#10 +
-      'Закройте все окна браузера (Chrome, Яндекс, Edge) и откройте заново — ' +
-      'расширение установится автоматически.' + #13#10 + #13#10 +
-      'Если иконки «O» нет: откройте chrome://extensions, включите ' +
-      '«Режим разработчика» и перетащите extension.crx из папки: ' +
-      ExpandConstant('{app}'),
+      'Остался последний шаг!' + #13#10 + #13#10 +
+      'Мы открыли папку с расширением в проводнике.' + #13#10 + #13#10 +
+      '1. Откройте в браузере страницу настроек расширений:' + #13#10 +
+      '   Chrome: chrome://extensions' + #13#10 +
+      '   Яндекс: browser://extensions' + #13#10 +
+      '   Edge: edge://extensions' + #13#10 + #13#10 +
+      '2. Включите тумблер «Режим разработчика» (справа вверху).' + #13#10 +
+      '3. Нажмите «Загрузить распакованное» (Load unpacked).' + #13#10 +
+      '4. Выберите папку, которая уже открыта в проводнике.' + #13#10 + #13#10 +
+      'Иконка «O» появится на панели браузера!',
       mbInformation, MB_OK
     );
   end;

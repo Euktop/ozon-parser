@@ -25,7 +25,7 @@ from typing import Any, Callable
 
 from ozon_parser.application.ingest import IngestHtmlUseCase
 from ozon_parser.clipboard import get_backend
-from ozon_parser.detection import detect_copy_type, is_usable_ozon_copy
+from ozon_parser.domain.detection import detect_copy_type, is_usable_ozon_copy
 from ozon_parser.infrastructure.parsing.ozon import OzonHtmlParser
 from ozon_parser.store import Store
 
@@ -54,7 +54,7 @@ def read_html_clipboard() -> str | None:
 # ============================================================================
 
 
-def _sig(text: str | None, html: str | None) -> str:
+def _sig(text: str, html: str | None) -> str:
     return hashlib.sha1(
         ((text or "") + "\u0000" + (html or "")).encode("utf-8", "ignore")
     ).hexdigest()

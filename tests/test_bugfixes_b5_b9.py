@@ -30,15 +30,6 @@ def test_load_wrong_type_logs_warning(tmp_path: Path, caplog) -> None:
     assert any("not-int" in r.message for r in caplog.records)
 
 
-def test_load_bool_for_int_logs_warning(tmp_path: Path, caplog) -> None:
-    f = tmp_path / "c.toml"
-    f.write_text("[parse]\nmin_quality_score = true\n", encoding="utf-8")
-    with caplog.at_level(logging.WARNING, logger="ozon_parser.config"):
-        c = load_config(f)
-    assert c.min_quality_score == 4
-    assert any("bool" in r.message for r in caplog.records)
-
-
 def test_load_missing_field_no_warning(tmp_path: Path, caplog) -> None:
     """Отсутствующее поле — не ошибка типа, не логируем."""
     f = tmp_path / "c.toml"

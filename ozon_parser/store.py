@@ -81,7 +81,16 @@ def _utc_now_iso() -> str:
 
 
 def _json_dumps(obj: Any) -> str:
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    def _default(o: Any) -> Any:
+        # bytes / datetime / Decimal в info (парсер может вернуть что угодно).
+        # Не валим весь upsert — сериализуем как строку.
+        if isinstance(o, bytes):
+            return o.decode("utf-8", "replace")
+        return str(o)
+
+    return json.dumps(
+        obj, ensure_ascii=False, separators=(",", ":"), default=_default
+    )
 
 
 class Store:
@@ -94,10 +103,15 @@ class Store:
     def __init__(self, db_path: Path | str | None = None):
         self.db_path = Path(db_path) if db_path is not None else default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._conn: sqlite3.Connection | None = sqlite3.connect(
+            str(self.db_path), check_same_thread=False
+        )
         self._lock = threading.RLock()  # RLock: clear() вызывает count() (nested lock)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode = WAL")
+        try:
+            self._conn.execute("PRAGMA journal_mode = WAL")
+        except sqlite3.OperationalError:
+            pass
         self._conn.execute("PRAGMA synchronous = NORMAL")
         self._conn.execute("PRAGMA busy_timeout = 5000")
         self._conn.executescript(SCHEMA)
@@ -105,7 +119,12 @@ class Store:
 
     def close(self) -> None:
         with self._lock:
-            self._conn.close()
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except sqlite3.ProgrammingError:
+                    pass
+                self._conn = None  # type: ignore[assignment]
 
     def __enter__(self) -> "Store":
         return self

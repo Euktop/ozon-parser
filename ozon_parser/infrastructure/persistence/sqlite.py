@@ -15,7 +15,7 @@ from ozon_parser.store import Store
 class SqliteProductRepository(Store):
     """Explicit adapter: Store как ProductRepository.
 
-    Не добавляет и не переопределяет методов — все 8 методов Store
-    (upsert/get/list/count/iter_all/iter_with_raw/delete/clear)
-    удовлетворяют Protocol ProductRepository.
+    Не добавляет и не переопределяет методов — все методы Store
+    (upsert/get/count/iter_all/iter_with_raw) удовлетворяют Protocol
+    ProductRepository.
     """

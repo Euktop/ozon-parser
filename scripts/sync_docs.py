@@ -4,7 +4,6 @@
 по всем местам, где она дублируется:
 
 - ``ozon_parser/__init__.py``      → ``__version__ = "..."``
-- ``ozon_parser/server.py``        → ``server_version = "ozon-parser/..."``
 - ``extension/manifest.json``      → ``"version": "..."``
 - любой ``*.md`` с маркером         → ``<!-- AUTO:VERSION -->...<!-- /AUTO -->``
 - ``SECURITY.md`` с маркером         → ``<!-- AUTO:SUPPORT_TABLE -->...<!-- /AUTO -->``
@@ -30,7 +29,6 @@ PYPROJECT = ROOT / "pyproject.toml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 MANIFEST = ROOT / "extension" / "manifest.json"
 INIT = ROOT / "ozon_parser" / "__init__.py"
-SERVER = ROOT / "ozon_parser" / "server.py"
 SECURITY = ROOT / "SECURITY.md"
 
 MARK_VERSION = "AUTO:VERSION"
@@ -108,12 +106,6 @@ def sync_all(version: str) -> list[tuple[Path, str]]:
 
     if _replace_pattern(INIT, r'__version__ = "[^"]+"', f'__version__ = "{version}"'):
         changes.append((INIT, "pattern"))
-    if _replace_pattern(
-        SERVER,
-        r'server_version = "ozon-parser/[^"]+"',
-        f'server_version = "ozon-parser/{version}"',
-    ):
-        changes.append((SERVER, "pattern"))
 
     # Extension manifest — через JSON, чтобы не сломать форматирование
     if MANIFEST.exists():

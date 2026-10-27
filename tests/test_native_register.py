@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -105,7 +104,7 @@ def test_register_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
     assert res.ok
     # Все 6 браузеров зарегистрированы
-    assert {n for n, _ in [(n, k) for n, k in M.BROWSERS["win32"]]} == set(res.registered)
+    assert {name for name, _ in M.BROWSERS["win32"]} == set(res.registered)
     assert len(registered) == len(M.BROWSERS["win32"])
     # Один общий manifest в LOCALAPPDATA
     manifest_path = tmp_path / "ozon-parser/native/com.ozon_parser.json"

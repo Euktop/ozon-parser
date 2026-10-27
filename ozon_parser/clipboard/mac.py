@@ -35,11 +35,27 @@ def _decode_apple_data(text: str) -> str | None:
         raw = bytes.fromhex(m.group(1))
     except ValueError:
         return None
-    for enc in ("utf-8", "utf-16le"):
+    # utf-8 first: heuristics для проверки «похоже на HTML/текст».
+    # utf-16le декодирует ЛЮБЫЕ чётные байты без ошибки (например
+    # b'<h1' → '㰱'), поэтому fallback только если utf-8 упал
+    # И результат похож на текст.
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    if len(raw) % 2 == 0:
         try:
-            return raw.decode(enc)
+            text = raw.decode("utf-16le")
         except UnicodeDecodeError:
-            continue
+            return None
+        # UTF-16LE без BOM почти наверняка мусор, если в результате
+        # много непечатаемых или суррогатов. Требуем хотя бы 80% printable.
+        printable = sum(
+            1 for c in text
+            if c.isprintable() or c in "\n\r\t "
+        )
+        if printable / max(len(text), 1) >= 0.8:
+            return text
     return None
 
 

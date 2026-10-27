@@ -9,5 +9,5 @@ notifier). Не переписывают логику. Назначение: я�
 use case + стабильный import path при будущей реорганизации.
 
 Infrastructure может импортировать domain + application + существующие
-top-level модули (store/parser/notifier). Проверяется test_architecture.
+top-level модули (store/parser/notifier).
 """

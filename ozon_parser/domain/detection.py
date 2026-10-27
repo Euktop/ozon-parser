@@ -18,6 +18,9 @@ from __future__ import annotations
 MIN_HTML_LEN = 500
 
 STRONG_MARKERS = (
+    'id="__ozon"',
+    'id="layoutpage"',
+    'data-server-rendered="true"',
     'id="section-characteristics"',
     'data-widget="webproductmainwidget"',
     'data-widget="webpdpgrid"',
@@ -43,9 +46,11 @@ def looks_like_ozon_product_page(text: str) -> bool:
         return False
     if not any(t in low for t in ("<html", "<!doctype", "<div", "<script")):
         return False
+    # 2+ weak маркера легко набирается на любой странице Ozon (рекомендации
+    # содержат webprice/webgallery). Требуем либо strong, либо 3+ weak.
     return any(m in low for m in STRONG_MARKERS) or sum(
         1 for m in WEAK_MARKERS if m in low
-    ) >= 2
+    ) >= 3
 
 
 def detect_copy_type(text: str) -> str:

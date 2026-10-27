@@ -20,8 +20,8 @@
 
 Регрессионные тесты (реализованы, `skip` без файлов):
 
-- `test_detection.py::test_source_is_source` — `detect_copy_type(source) == "source"`.
-- `test_detection.py::test_rendered_is_rendered` — `detect_copy_type(rendered) == "rendered"`.
-- `test_parser.py::test_source_fields` — ключевые поля (title, sku, price, rating, seller) заполнены.
-- `test_parser.py::test_source_vs_rendered` — оба дают одинаковые значения для ключевых полей.
-- `test_store.py::test_upsert_dedup` — повторный `upsert` того же SKU не создаёт дубль.
+- `test_detection.py::test_real_source_is_source` — `detect_copy_type(source) == "source"`.
+- `test_detection.py::test_real_rendered_is_rendered` — `detect_copy_type(rendered) == "rendered"`.
+- `test_parser.py::test_real_source_parse` — ключевые поля (title, sku, price, rating, seller) заполнены.
+- `test_parser.py::test_real_source_vs_rendered` — оба дают одинаковые значения для ключевых полей.
+- `test_parser.py::test_real_source_clean_desc_node_safe` — `collect_product` не мутирует оригинальный soup на реальном source.html.
