@@ -23,7 +23,6 @@ const DEFAULT_PORT = 8765;
 // (3000мс таймер) не было замеров — оказалось, что page-fetch не зависит
 // от состояния DOM, и задержка чисто тавтологическая.
 const AUTO_DEDUP_MS = 5000;
-const NATIVE_TIMEOUT_MS = 5000;
 
 const ICON_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";

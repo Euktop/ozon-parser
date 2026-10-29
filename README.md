@@ -229,10 +229,14 @@ Badge на иконке — число товаров.
 
 `POST /flush` отвечает **только** `text/plain` (формат из `format`).
 
-> Актуальная версия — <!-- AUTO:VERSION -->0.6.0<!-- /AUTO -->. Что нового в 0.6.x:
-> fast bulk mode (fetch-based, ~60-80 мс/URL), капча-хендлер, `DELETE /items`,
-> `dev register/serve` для hot-reload, persistent native port,
-> frozen build без ProcessPool (первый ingest ~300 мс вместо ~10 с).
+> Актуальная версия — <!-- AUTO:VERSION -->0.6.0<!-- /AUTO -->.
+>
+> Что нового в 0.6.0: frozen build без ProcessPool (первый ingest ~300 мс
+> вместо ~10 с), backpressure Semaphore в native host.
+>
+> Что нового в 0.5.1: fast bulk mode (fetch-based, ~60-80 мс/URL),
+> капча-хендлер, `DELETE /items`, `dev register/serve` для hot-reload,
+> persistent native port.
 
 Запись файла на диск сервера (`to:file`) и управление буфером сервера
 (`to:clipboard`) в HTTP **убраны** — это CLI-операции

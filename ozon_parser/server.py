@@ -38,6 +38,16 @@ DEFAULT_PORT = 8765
 
 MAX_BODY_BYTES = 30 * 1024 * 1024  # 30 MB
 
+# Origin-allowlist: только ozon.ru (bookmarklet) и наше extension.
+# Missing Origin (curl, скрипты, native host) — разрешён: там нет
+# браузерного контекста, CSRF невозможен. `null` (sandboxed iframe) —
+# отклоняем. Exact match, не startswith: `https://www.ozon.ru.evil.com`
+# должен получать 403.
+ALLOWED_ORIGINS = {
+    "https://www.ozon.ru",
+    "chrome-extension://bmdjfjhckhfifhdnohiojamggfnlbcgf",
+}
+
 
 # ============================================================================
 #  handler
@@ -93,6 +103,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+    def _check_origin(self) -> bool:
+        """True если Origin допустим (или отсутствует — curl/scripts)."""
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True
+        if origin == "null":
+            return False
+        return origin in ALLOWED_ORIGINS
 
     def _read_body(self) -> bytes:
         n = int(self.headers.get("Content-Length") or 0)
@@ -156,6 +175,8 @@ class Handler(BaseHTTPRequestHandler):
     # ----- endpoint implementations -----
 
     def _handle_ingest(self, u) -> None:
+        if not self._check_origin():
+            return self._send_json(403, {"error": "forbidden origin"})
         try:
             raw = self._read_body()
         except ValueError as e:
@@ -208,6 +229,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(200, resp)
 
     def _handle_flush(self) -> None:
+        if not self._check_origin():
+            return self._send_json(403, {"error": "forbidden origin"})
         try:
             raw = self._read_body()
             req = json.loads(raw.decode("utf-8") or "{}")

@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python: ['3.10', '3.12']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.10', '3.12', '3.14']
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +29,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .[dev]
+
+      - name: Lint (ruff)
+        run: ruff check ozon_parser/ tests/
+
+      - name: Type check (mypy, scoped)
+        run: mypy ozon_parser/domain ozon_parser/application
+
+      - name: Sync docs (version drift)
+        run: python scripts/sync_docs.py --check
 
       - name: Test
         run: pytest -q

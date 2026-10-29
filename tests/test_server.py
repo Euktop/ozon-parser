@@ -85,6 +85,78 @@ def test_options_cors(server) -> None:
     assert hdrs.get("access-control-allow-origin") == "https://www.ozon.ru"
 
 
+def test_ingest_rejects_evil_origin(server) -> None:
+    """CSRF-защита: чужой Origin → 403, ничего не записано."""
+    port, store = server
+    body = SYNTHETIC_SOURCE.encode("utf-8")
+    st, data, _ = _req(
+        port, "POST", "/ingest", body=body,
+        headers={"Content-Type": "text/plain", "Origin": "https://evil.example"},
+    )
+    assert st == 403
+    assert b"forbidden origin" in data
+    assert store.count() == 0
+
+
+def test_ingest_rejects_null_origin(server) -> None:
+    """Sandboxed iframe присылает Origin: null — отклоняем."""
+    port, store = server
+    body = SYNTHETIC_SOURCE.encode("utf-8")
+    st, data, _ = _req(
+        port, "POST", "/ingest", body=body,
+        headers={"Content-Type": "text/plain", "Origin": "null"},
+    )
+    assert st == 403
+    assert store.count() == 0
+
+
+def test_ingest_allows_missing_origin(server) -> None:
+    """curl / скрипты: нет Origin — разрешено (CSRF невозможен)."""
+    port, store = server
+    body = SYNTHETIC_SOURCE.encode("utf-8")
+    st, data, _ = _req(port, "POST", "/ingest", body=body,
+                       headers={"Content-Type": "text/plain"})
+    assert st == 200
+    assert json.loads(data)["status"] == "added"
+
+
+def test_ingest_allows_ozon_origin(server) -> None:
+    """Bookmarklet: Origin = ozon.ru — разрешено."""
+    port, store = server
+    body = SYNTHETIC_SOURCE.encode("utf-8")
+    st, data, _ = _req(
+        port, "POST", "/ingest", body=body,
+        headers={"Content-Type": "text/plain", "Origin": "https://www.ozon.ru"},
+    )
+    assert st == 200
+    assert json.loads(data)["status"] == "added"
+
+
+def test_ingest_allows_extension_origin(server) -> None:
+    """Extension fallback: chrome-extension://<ID> — разрешено."""
+    port, store = server
+    body = SYNTHETIC_SOURCE.encode("utf-8")
+    st, data, _ = _req(
+        port, "POST", "/ingest", body=body,
+        headers={
+            "Content-Type": "text/plain",
+            "Origin": "chrome-extension://bmdjfjhckhfifhdnohiojamggfnlbcgf",
+        },
+    )
+    assert st == 200
+
+
+def test_flush_rejects_evil_origin(server) -> None:
+    port, _ = server
+    body = json.dumps({"format": "markdown"}).encode("utf-8")
+    st, data, _ = _req(
+        port, "POST", "/flush", body=body,
+        headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
+    )
+    assert st == 403
+    assert b"forbidden origin" in data
+
+
 def test_ingest_source(server) -> None:
     port, store = server
     body = SYNTHETIC_SOURCE.encode("utf-8")
