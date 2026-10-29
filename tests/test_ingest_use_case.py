@@ -9,7 +9,6 @@ from __future__ import annotations
 import gzip
 from typing import Any
 
-import pytest
 
 from ozon_parser.application.ingest import (
     IngestHtmlUseCase,
